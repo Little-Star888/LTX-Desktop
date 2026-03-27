@@ -1,5 +1,6 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useState, type ReactNode } from 'react'
 import { backendFetch, resetBackendCredentials } from '../lib/backend'
+import { isElectron } from '../lib/environment'
 
 export interface InferenceSettings {
   steps: number
@@ -156,6 +157,11 @@ export function AppSettingsProvider({ children }: { children: ReactNode }) {
       setBackendProcessStatus(nextStatus)
     }
 
+    if (!isElectron) {
+      applyStatus({ status: 'alive' })
+      return
+    }
+
     const unsubscribe = window.electronAPI.onBackendHealthStatus((data) => {
       applyStatus(data)
     })
@@ -170,7 +176,9 @@ export function AppSettingsProvider({ children }: { children: ReactNode }) {
 
     return () => {
       cancelled = true
-      unsubscribe()
+      if (unsubscribe) {
+        unsubscribe()
+      }
     }
   }, [])
 

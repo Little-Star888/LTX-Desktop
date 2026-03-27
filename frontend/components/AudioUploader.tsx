@@ -1,7 +1,9 @@
 import { useCallback } from 'react'
 import { useDropzone } from 'react-dropzone'
 import { Upload, Music, RefreshCw, Trash2 } from 'lucide-react'
+import { useTranslation } from 'react-i18next'
 import { cn } from '@/lib/utils'
+import { isElectron } from '../lib/environment'
 
 interface AudioUploaderProps {
   onAudioSelect: (path: string | null) => void
@@ -9,14 +11,20 @@ interface AudioUploaderProps {
 }
 
 export function AudioUploader({ onAudioSelect, selectedAudio }: AudioUploaderProps) {
+  const { t } = useTranslation()
+  
   const onDrop = useCallback((acceptedFiles: File[]) => {
     const file = acceptedFiles[0]
     if (file) {
       const filePath = (file as any).path as string | undefined
-      if (filePath) {
+      if (isElectron && filePath) {
         const normalized = filePath.replace(/\\/g, '/')
         const fileUrl = normalized.startsWith('/') ? `file://${normalized}` : `file:///${normalized}`
         onAudioSelect(fileUrl)
+      } else {
+        // In web mode, use blob URL
+        const url = URL.createObjectURL(file)
+        onAudioSelect(url)
       }
     }
   }, [onAudioSelect])
@@ -61,7 +69,7 @@ export function AudioUploader({ onAudioSelect, selectedAudio }: AudioUploaderPro
   return (
     <div className="w-full">
       <label className="block text-[12px] font-semibold text-zinc-500 mb-2 uppercase leading-4">
-        Audio
+        {t('genSpace.inputAudio')}
       </label>
       <div
         {...getRootProps()}
@@ -76,31 +84,28 @@ export function AudioUploader({ onAudioSelect, selectedAudio }: AudioUploaderPro
 
         {selectedAudio ? (
           <div className="flex items-center gap-3">
-            {/* Audio icon (no thumbnail for audio) */}
             <div className="w-14 h-14 flex-shrink-0 rounded-md overflow-hidden bg-zinc-800 flex items-center justify-center">
               <Music className="h-6 w-6 text-emerald-400" />
             </div>
 
-            {/* Filename */}
             <div className="flex-1 min-w-0">
               <p className="text-sm text-white truncate" title={getDisplayName(selectedAudio)}>
                 {getDisplayName(selectedAudio)}
               </p>
             </div>
 
-            {/* Action buttons */}
             <div className="flex items-center gap-1 flex-shrink-0">
               <button
                 onClick={clearAudio}
                 className="p-2 hover:bg-zinc-700 rounded-lg transition-colors"
-                title="Remove audio"
+                title={t('genSpace.clearAudio')}
               >
                 <Trash2 className="h-5 w-5 text-zinc-400 hover:text-white" />
               </button>
               <button
                 onClick={replaceAudio}
                 className="p-2 hover:bg-zinc-700 rounded-lg transition-colors"
-                title="Replace audio"
+                title={t('playground.upload.replaceAudio')}
               >
                 <RefreshCw className="h-5 w-5 text-zinc-400 hover:text-white" />
               </button>
@@ -117,17 +122,17 @@ export function AudioUploader({ onAudioSelect, selectedAudio }: AudioUploaderPro
             </div>
             <div>
               <p className="text-sm font-medium text-white">
-                Drag audio file here
+                {t('playground.upload.dropAudio')}
               </p>
               <p className="text-sm text-zinc-500">
-                Or <span className="text-emerald-400 underline">upload a file</span>
+                {t('playground.upload.or')} <span className="text-emerald-400 underline">{t('playground.upload.uploadFile')}</span>
               </p>
             </div>
           </div>
         )}
       </div>
       <p className="text-xs text-zinc-500 mt-2">
-        mp3, wav, ogg, aac, flac, m4a. Max size is 50MB
+        {t('playground.upload.supportedFormats', { formats: 'mp3, wav, ogg, aac, flac, m4a' })}. {t('playground.upload.maxSize', { size: '50MB' })}
       </p>
     </div>
   )

@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback } from 'react'
-import { backendFetch, backendWsUrl, resetBackendCredentials } from '../lib/backend'
+import { api, apiFetch, getWebSocketUrl, resetCredentials } from '../lib/api'
+import { isElectron } from '../lib/environment'
 import { logger } from '../lib/logger'
 
 interface BackendStatus {
@@ -67,7 +68,7 @@ export function useBackend(): UseBackendReturn {
   const checkHealth = useCallback(async (): Promise<boolean> => {
     try {
       logger.info('Checking backend health...')
-      const response = await backendFetch('/health')
+      const response = await apiFetch('/health')
 
       if (response.ok) {
         const data = await response.json()
@@ -92,12 +93,8 @@ export function useBackend(): UseBackendReturn {
 
   const fetchModels = useCallback(async () => {
     try {
-      const response = await backendFetch('/api/models')
-
-      if (response.ok) {
-        const data = await response.json()
-        setModels(data.models)
-      }
+      const data = await api.getModelsStatus()
+      setModels(data.models || [])
     } catch (err) {
       logger.error(`Failed to fetch models: ${err}`)
     }
@@ -105,8 +102,7 @@ export function useBackend(): UseBackendReturn {
 
   const downloadModel = useCallback(async (modelId: string) => {
     try {
-      // Connect to WebSocket for download progress
-      const wsUrl = await backendWsUrl(`/ws/download/${modelId}`)
+      const wsUrl = await getWebSocketUrl(`/ws/download/${modelId}`)
       const ws = new WebSocket(wsUrl)
 
       ws.onmessage = (event) => {
@@ -126,8 +122,7 @@ export function useBackend(): UseBackendReturn {
         }
       }
 
-      // Trigger download
-      await backendFetch(`/api/models/${modelId}/download`, {
+      await apiFetch(`/api/models/${modelId}/download`, {
         method: 'POST',
       })
     } catch (err) {
@@ -139,8 +134,7 @@ export function useBackend(): UseBackendReturn {
     setProcessStatus(payload.status)
 
     if (payload.status === 'alive') {
-      // Reset cached credentials so the new port/token are fetched
-      resetBackendCredentials()
+      resetCredentials()
       const healthy = await checkHealth()
       if (healthy) {
         await fetchModels()
@@ -171,26 +165,51 @@ export function useBackend(): UseBackendReturn {
       await handleBackendStatus(payload)
     }
 
-    const unsubscribe = window.electronAPI.onBackendHealthStatus((data: BackendHealthStatusPayload) => {
-      void applyStatus(data)
-    })
+    let unsubscribe: (() => void) | undefined
 
-    const init = async () => {
-      try {
-        const snapshot = await window.electronAPI.getBackendHealthStatus()
-        await applyStatus(snapshot)
-      } catch (err) {
-        logger.error(`Failed to load backend health status snapshot: ${err}`)
+    if (isElectron) {
+      unsubscribe = window.electronAPI.onBackendHealthStatus((data: BackendHealthStatusPayload) => {
+        void applyStatus(data)
+      })
+
+      const init = async () => {
+        try {
+          const snapshot = await window.electronAPI.getBackendHealthStatus()
+          await applyStatus(snapshot)
+        } catch (err) {
+          logger.error(`Failed to load backend health status snapshot: ${err}`)
+        }
       }
-    }
 
-    void init()
+      void init()
+    } else {
+      const init = async () => {
+        try {
+          setProcessStatus('alive')
+          const healthy = await checkHealth()
+          if (healthy) {
+            await fetchModels()
+          } else {
+            setError('Failed to connect to backend')
+          }
+        } catch (err) {
+          logger.error(`Failed to initialize: ${err}`)
+          setError('Failed to connect to backend')
+        } finally {
+          setIsLoading(false)
+        }
+      }
+
+      void init()
+    }
 
     return () => {
       cancelled = true
-      unsubscribe()
+      if (unsubscribe) {
+        unsubscribe()
+      }
     }
-  }, [handleBackendStatus])
+  }, [handleBackendStatus, checkHealth, fetchModels])
 
   return {
     status,

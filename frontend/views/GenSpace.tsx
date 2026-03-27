@@ -5,6 +5,7 @@ import {
   Clock, Monitor, ChevronUp, Scissors, Music,
   ChevronLeft, ChevronRight, Copy, Check
 } from 'lucide-react'
+import { useTranslation } from 'react-i18next'
 import { useProjects } from '../contexts/ProjectContext'
 import type { GenSpaceRetakeSource } from '../contexts/ProjectContext'
 import { useAppSettings } from '../contexts/AppSettingsContext'
@@ -15,7 +16,8 @@ import type { ICLoraConditioningType } from '../components/ICLoraPanel'
 import type { Asset } from '../types/project'
 import { GenerationErrorDialog } from '../components/GenerationErrorDialog'
 import { copyToAssetFolder } from '../lib/asset-copy'
-import { fileUrlToPath } from '../lib/url-to-path'
+import { fileUrlToPath, pathToUrl } from '../lib/url-to-path'
+import { isElectron } from '../lib/environment'
 import {
   FORCED_API_VIDEO_FPS,
   FORCED_API_VIDEO_RESOLUTIONS,
@@ -47,6 +49,7 @@ function AssetCard({
   onIcLora?: (asset: Asset) => void
   onToggleFavorite?: () => void
 }) {
+  const { t } = useTranslation()
   const videoRef = useRef<HTMLVideoElement>(null)
   const [isHovered, setIsHovered] = useState(false)
   const [currentTime, setCurrentTime] = useState(0)
@@ -140,7 +143,7 @@ function AssetCard({
                   className="px-2.5 py-1.5 rounded-lg bg-black/40 backdrop-blur-md text-white hover:bg-black/60 transition-colors flex items-center gap-1.5 text-xs font-medium whitespace-nowrap"
                 >
                   <Film className="h-3 w-3" />
-                  Create video
+                  {t('genSpace.createVideo')}
                 </button>
               </>
             )}
@@ -151,7 +154,7 @@ function AssetCard({
                   className="px-2.5 py-1.5 rounded-lg bg-black/40 backdrop-blur-md text-white hover:bg-black/60 transition-colors flex items-center gap-1.5 text-xs font-medium whitespace-nowrap"
                 >
                   <Scissors className="h-3 w-3" />
-                  Retake
+                  {t('retake.retake')}
                 </button>
                 {onIcLora && (
                   <button
@@ -159,7 +162,7 @@ function AssetCard({
                     className="px-2.5 py-1.5 rounded-lg bg-black/40 backdrop-blur-md text-white hover:bg-black/60 transition-colors flex items-center gap-1.5 text-xs font-medium whitespace-nowrap"
                   >
                     <Sparkles className="h-3 w-3" />
-                    IC-LoRA
+                    {t('icLora.title')}
                   </button>
                 )}
               </>
@@ -372,6 +375,7 @@ function PromptBar({
   icLoraStrength?: number
   onIcLoraStrengthChange?: (strength: number) => void
 }) {
+  const { t } = useTranslation()
   const inputRef = useRef<HTMLInputElement>(null)
   const audioInputRef = useRef<HTMLInputElement>(null)
   const [isDragOver, setIsDragOver] = useState(false)
@@ -419,10 +423,8 @@ function PromptBar({
       const ext = file.name.split('.').pop()?.toLowerCase()
       if (['mp3', 'wav', 'ogg', 'aac', 'flac', 'm4a'].includes(ext || '')) {
         const filePath = (file as any).path as string | undefined
-        if (filePath) {
-          const normalized = filePath.replace(/\\/g, '/')
-          const fileUrl = normalized.startsWith('/') ? `file://${normalized}` : `file:///${normalized}`
-          onInputAudioChange(fileUrl)
+        if (isElectron && filePath) {
+          onInputAudioChange(pathToUrl(filePath))
         }
       }
     }
@@ -432,10 +434,8 @@ function PromptBar({
     const file = e.target.files?.[0]
     if (file) {
       const filePath = (file as any).path as string | undefined
-      if (filePath) {
-        const normalized = filePath.replace(/\\/g, '/')
-        const fileUrl = normalized.startsWith('/') ? `file://${normalized}` : `file:///${normalized}`
-        onInputAudioChange(fileUrl)
+      if (isElectron && filePath) {
+        onInputAudioChange(pathToUrl(filePath))
       }
     }
   }
@@ -445,10 +445,8 @@ function PromptBar({
     if (file && file.type.startsWith('image/')) {
       // In Electron, File objects have a .path property with the full filesystem path
       const filePath = (file as any).path as string | undefined
-      if (filePath) {
-        const normalized = filePath.replace(/\\/g, '/')
-        const fileUrl = normalized.startsWith('/') ? `file://${normalized}` : `file:///${normalized}`
-        onInputImageChange(fileUrl)
+      if (isElectron && filePath) {
+        onInputImageChange(pathToUrl(filePath))
       } else {
         const url = URL.createObjectURL(file)
         onInputImageChange(url)
@@ -560,19 +558,19 @@ function PromptBar({
       <div className="flex items-center gap-0.5 px-1.5 py-1.5 border-t border-zinc-800/60 text-xs text-zinc-400">
         {/* Mode dropdown */}
         <SettingsDropdown
-          title="MODE"
+          title={t('genSpace.mode')}
           value={mode}
           onChange={(v) => onModeChange(v as 'image' | 'video' | 'retake' | 'ic-lora')}
           options={[
-            { value: 'image', label: 'Generate Images', icon: <Image className="h-4 w-4" /> },
-            { value: 'video', label: 'Generate Videos', icon: <Video className="h-4 w-4" /> },
-            { value: 'retake', label: 'Retake', icon: <Scissors className="h-4 w-4" /> },
-            ...(canUseIcLora ? [{ value: 'ic-lora', label: 'IC-LoRA', icon: <Sparkles className="h-4 w-4" /> }] : []),
+            { value: 'image', label: t('genSpace.generateImages'), icon: <Image className="h-4 w-4" /> },
+            { value: 'video', label: t('genSpace.generateVideos'), icon: <Video className="h-4 w-4" /> },
+            { value: 'retake', label: t('retake.retake'), icon: <Scissors className="h-4 w-4" /> },
+            ...(canUseIcLora ? [{ value: 'ic-lora', label: t('icLora.title'), icon: <Sparkles className="h-4 w-4" /> }] : []),
           ]}
           trigger={
             <>
               {mode === 'image' ? <Image className="h-3.5 w-3.5" /> : mode === 'retake' ? <Scissors className="h-3.5 w-3.5" /> : mode === 'ic-lora' ? <Sparkles className="h-3.5 w-3.5" /> : <Video className="h-3.5 w-3.5" />}
-              <span className="text-zinc-300 font-medium">{mode === 'image' ? 'Image' : mode === 'retake' ? 'Retake' : mode === 'ic-lora' ? 'IC-LoRA' : 'Video'}</span>
+              <span className="text-zinc-300 font-medium">{mode === 'image' ? t('genSpace.image') : mode === 'retake' ? t('retake.retake') : mode === 'ic-lora' ? t('icLora.title') : t('genSpace.video')}</span>
               <ChevronUp className="h-3 w-3 text-zinc-500" />
             </>
           }
@@ -581,24 +579,24 @@ function PromptBar({
         <div className="flex-1" />
         
         {isRetake ? (
-          <div className="text-[10px] text-zinc-500 pr-2">Trim in the panel above, then retake</div>
+          <div className="text-[10px] text-zinc-500 pr-2">{t('retake.selectPartToRegenerate')}</div>
         ) : isIcLora ? (
           <>
             <SettingsDropdown
-              title="CONDITIONING TYPE"
+              title={t('icLora.conditioningType').toUpperCase()}
               value={icLoraCondType || 'canny'}
               onChange={(v) => onIcLoraCondTypeChange?.(v as ICLoraConditioningType)}
-              options={CONDITIONING_TYPES.map(ct => ({ value: ct.value, label: ct.label }))}
+              options={CONDITIONING_TYPES.map(ct => ({ value: ct.value, label: t(ct.labelKey) }))}
               trigger={
                 <>
-                  <span className="text-zinc-300 font-medium">{CONDITIONING_TYPES.find(ct => ct.value === icLoraCondType)?.label || 'Canny Edges'}</span>
+                  <span className="text-zinc-300 font-medium">{t(CONDITIONING_TYPES.find(ct => ct.value === icLoraCondType)?.labelKey || 'icLora.canny')}</span>
                   <ChevronUp className="h-3 w-3 text-zinc-500" />
                 </>
               }
             />
             <div className="w-px h-4 bg-zinc-700 mx-0.5" />
             <SettingsDropdown
-              title="STRENGTH"
+              title={t('icLora.strength').toUpperCase()}
               value={String(icLoraStrength ?? 1.0)}
               onChange={(v) => onIcLoraStrengthChange?.(parseFloat(v))}
               options={[

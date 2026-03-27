@@ -1,7 +1,9 @@
 import React, { useState, useRef, useEffect, useCallback } from 'react'
 import { Film, Play, Pause, Volume2, VolumeX, Loader2, Upload, Trash2, RefreshCw } from 'lucide-react'
+import { useTranslation } from 'react-i18next'
 import { logger } from '../lib/logger'
-import { fileUrlToPath } from '../lib/url-to-path'
+import { fileUrlToPath, pathToUrl } from '../lib/url-to-path'
+import { isElectron } from '../lib/environment'
 
 interface RetakePanelProps {
   initialVideoUrl?: string | null
@@ -29,11 +31,6 @@ function formatTimecode(seconds: number): string {
   return `${String(m).padStart(2, '0')}:${s.toFixed(2).padStart(5, '0')}`
 }
 
-function pathToFileUrl(filePath: string): string {
-  const normalized = filePath.replace(/\\/g, '/')
-  return normalized.startsWith('/') ? `file://${normalized}` : `file:///${normalized}`
-}
-
 export function RetakePanel({
   initialVideoUrl,
   initialVideoPath,
@@ -44,6 +41,7 @@ export function RetakePanel({
   fillHeight = false,
   onChange,
 }: RetakePanelProps) {
+  const { t } = useTranslation()
   const videoRef = useRef<HTMLVideoElement>(null)
   const filmstripRef = useRef<HTMLDivElement>(null)
   const [videoUrl, setVideoUrl] = useState<string | null>(initialVideoUrl || null)
@@ -319,6 +317,7 @@ export function RetakePanel({
   }, [draggingHandle, videoDuration])
 
   const handleBrowse = useCallback(async () => {
+    if (!isElectron) return
     const paths = await window.electronAPI.showOpenFileDialog({
       title: 'Select Video',
       filters: [{ name: 'Video', extensions: ['mp4', 'mov', 'avi', 'webm', 'mkv'] }],
@@ -326,7 +325,7 @@ export function RetakePanel({
     if (paths && paths.length > 0) {
       const filePath = paths[0]
       setVideoPath(filePath)
-      setVideoUrl(pathToFileUrl(filePath))
+      setVideoUrl(pathToUrl(filePath))
       setThumbnails([])
       extractingRef.current = false
     }
@@ -369,9 +368,9 @@ export function RetakePanel({
     const file = e.dataTransfer.files?.[0]
     if (file) {
       const filePath = (file as any).path as string | undefined
-      if (filePath) {
+      if (isElectron && filePath) {
         setVideoPath(filePath)
-        setVideoUrl(pathToFileUrl(filePath))
+        setVideoUrl(pathToUrl(filePath))
         setThumbnails([])
         extractingRef.current = false
       }
@@ -388,7 +387,7 @@ export function RetakePanel({
       <div className="flex items-center justify-between px-4 py-3 border-b border-zinc-800 flex-shrink-0">
         <div className="flex items-center gap-2">
           <Film className="h-4 w-4 text-blue-400" />
-          <span className="text-sm font-semibold text-white">Retake</span>
+          <span className="text-sm font-semibold text-white">{t('retake.title')}</span>
           {videoPath && (
             <span className="text-xs text-zinc-500 truncate max-w-[240px]">
               {videoPath.split(/[/\\]/).pop()}
@@ -400,14 +399,14 @@ export function RetakePanel({
             <button
               onClick={handleClear}
               className="p-1.5 rounded-md hover:bg-zinc-800 text-zinc-400 hover:text-white transition-colors"
-              title="Clear video"
+              title={t('retake.clearVideo')}
             >
               <Trash2 className="h-3.5 w-3.5" />
             </button>
             <button
               onClick={handleBrowse}
               className="p-1.5 rounded-md hover:bg-zinc-800 text-zinc-400 hover:text-white transition-colors"
-              title="Replace video"
+              title={t('retake.replaceVideo')}
             >
               <RefreshCw className="h-3.5 w-3.5" />
             </button>
@@ -428,14 +427,14 @@ export function RetakePanel({
             <Upload className="h-5 w-5 text-zinc-400" />
           </div>
           <div className="text-center">
-            <p className="text-sm text-white">Drop a video to retake</p>
-            <p className="text-xs text-zinc-500">mp4, mov, avi, webm, mkv</p>
+            <p className="text-sm text-white">{t('retake.dropVideo')}</p>
+            <p className="text-xs text-zinc-500">{t('retake.dropVideoHint')}</p>
           </div>
           <button
             onClick={handleBrowse}
             className="px-4 py-1.5 text-xs font-medium rounded-md bg-white text-black hover:bg-zinc-200 transition-colors"
           >
-            Browse
+            {t('retake.browse')}
           </button>
         </div>
       ) : (

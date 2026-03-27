@@ -7,6 +7,7 @@ import { AppSettingsProvider, useAppSettings } from './contexts/AppSettingsConte
 import { KeyboardShortcutsModal } from './components/KeyboardShortcutsModal'
 import { useBackend } from './hooks/use-backend'
 import { logger } from './lib/logger'
+import { isElectron } from './lib/environment'
 import { Home } from './views/Home'
 import { Project } from './views/Project'
 import { Playground } from './views/Playground'
@@ -77,6 +78,10 @@ function AppContent() {
   }, [])
 
   useEffect(() => {
+    if (!isElectron) {
+      setPythonReady(true)
+      return
+    }
     const check = async () => {
       try {
         const result = await window.electronAPI.checkPythonReady()
@@ -90,6 +95,10 @@ function AppContent() {
   }, [])
 
   useEffect(() => {
+    if (!isElectron) {
+      setBackendStarted(true)
+      return
+    }
     if (pythonReady !== true || backendStarted) return
     setBackendStarted(true)
     const start = async () => {
@@ -105,6 +114,10 @@ function AppContent() {
   }, [pythonReady, backendStarted])
 
   useEffect(() => {
+    if (!isElectron) {
+      setSetupState({ needsSetup: false, needsLicense: false })
+      return
+    }
     const checkFirstRun = async () => {
       try {
         const next = await window.electronAPI.checkFirstRun()
@@ -295,7 +308,13 @@ function AppContent() {
         inputLabel: 'LTX API key',
         placeholder: 'Enter your LTX API key...',
         onSave: handleSaveLtxKey,
-        onGetKey: () => window.electronAPI.openLtxApiKeyPage(),
+        onGetKey: () => {
+          if (isElectron) {
+            window.electronAPI.openLtxApiKeyPage()
+          } else {
+            window.open('https://ltx.studio/api', '_blank')
+          }
+        },
         getKeyLabel: 'Get LTX API key',
       },
       {
@@ -307,7 +326,13 @@ function AppContent() {
         inputLabel: 'FAL AI API key',
         placeholder: 'Enter your FAL AI API key...',
         onSave: saveFalApiKey,
-        onGetKey: () => window.electronAPI.openFalApiKeyPage(),
+        onGetKey: () => {
+          if (isElectron) {
+            window.electronAPI.openFalApiKeyPage()
+          } else {
+            window.open('https://fal.ai/dashboard/keys', '_blank')
+          }
+        },
         getKeyLabel: 'Get FAL API key',
       },
     ]

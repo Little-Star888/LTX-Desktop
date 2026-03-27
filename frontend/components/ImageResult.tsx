@@ -1,5 +1,6 @@
 import { useState } from 'react'
 import { Download, RefreshCw, ImageIcon, Video, Heart, Pencil, MoreHorizontal } from 'lucide-react'
+import { useTranslation } from 'react-i18next'
 import { Button } from './ui/button'
 
 interface ImageResultProps {
@@ -17,6 +18,7 @@ export function ImageResult({
   statusMessage,
   onCreateVideo 
 }: ImageResultProps) {
+  const { t } = useTranslation()
   const [isHovered, setIsHovered] = useState(false)
 
   const handleDownload = () => {
@@ -33,7 +35,7 @@ export function ImageResult({
   return (
     <div className="w-full h-full flex flex-col">
       <label className="block text-[12px] font-semibold text-zinc-500 mb-2 uppercase leading-4">
-        Result
+        {t('playground.result.title')}
       </label>
       
       <div className="flex-1 bg-zinc-900 rounded-lg border border-zinc-800 overflow-hidden flex items-center justify-center relative min-h-[400px]">
@@ -41,7 +43,7 @@ export function ImageResult({
           <div className="flex flex-col items-center justify-center p-8 text-center">
             <RefreshCw className="h-12 w-12 text-primary animate-spin mb-4" />
             <p className="text-lg font-medium text-foreground mb-2">
-              Generating Image...
+              {t('playground.generating')}...
             </p>
             <p className="text-sm text-muted-foreground mb-4">
               {statusMessage}
@@ -137,7 +139,7 @@ export function ImageResult({
             <div className="w-16 h-16 rounded-full bg-zinc-800 flex items-center justify-center mb-4">
               <ImageIcon className="h-8 w-8 text-zinc-400" />
             </div>
-            <p className="text-sm">Generated image will appear here</p>
+            <p className="text-sm">{t('playground.result.generatedImage')}</p>
           </div>
         )}
       </div>

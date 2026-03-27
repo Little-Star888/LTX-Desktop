@@ -1,5 +1,6 @@
 import React, { useRef, useEffect, useState, useCallback } from 'react'
 import { Play, Pause, Download, RefreshCw, RotateCcw, Volume2, VolumeX, Maximize2 } from 'lucide-react'
+import { useTranslation } from 'react-i18next'
 import { Button } from './ui/button'
 import { logger } from '../lib/logger'
 
@@ -19,6 +20,7 @@ function formatTime(seconds: number): string {
 }
 
 export function VideoPlayer({ videoUrl, videoPath, videoResolution, isGenerating, progress, statusMessage }: VideoPlayerProps) {
+  const { t } = useTranslation()
   const videoRef = useRef<HTMLVideoElement>(null)
   const progressRef = useRef<HTMLDivElement>(null)
   const [isPlaying, setIsPlaying] = useState(false)
@@ -266,7 +268,7 @@ export function VideoPlayer({ videoUrl, videoPath, videoResolution, isGenerating
   return (
     <div className="w-full h-full flex flex-col">
       <label className="block text-[12px] font-semibold text-zinc-500 mb-2 uppercase leading-4">
-        Result
+        {t('playground.result.title')}
       </label>
       
       <div className="flex-1 bg-zinc-900 rounded-lg border border-zinc-800 overflow-hidden flex items-center justify-center relative min-h-[400px]">
@@ -526,7 +528,7 @@ export function VideoPlayer({ videoUrl, videoPath, videoResolution, isGenerating
             <div className="w-16 h-16 rounded-full bg-zinc-800 flex items-center justify-center mb-4">
               <Play className="h-8 w-8 text-zinc-400" />
             </div>
-            <p className="text-sm">Generated video will appear here</p>
+            <p className="text-sm">{t('playground.result.generatedVideo')}</p>
           </div>
         )}
       </div>

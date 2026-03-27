@@ -3,9 +3,11 @@ import {
   Upload, Loader2, Film, Sparkles,
   RefreshCw, Download, AlertCircle, Trash2,
 } from 'lucide-react'
+import { useTranslation } from 'react-i18next'
 import { backendFetch } from '../lib/backend'
 import { logger } from '../lib/logger'
-import { fileUrlToPath } from '../lib/url-to-path'
+import { fileUrlToPath, pathToUrl } from '../lib/url-to-path'
+import { isElectron } from '../lib/environment'
 
 export type ICLoraConditioningType = 'canny' | 'depth'
 
@@ -59,9 +61,9 @@ interface ICLoraPanelProps {
   }) => void
 }
 
-export const CONDITIONING_TYPES: { value: ICLoraConditioningType; label: string; desc: string }[] = [
-  { value: 'canny', label: 'Canny Edges', desc: 'Edge detection' },
-  { value: 'depth', label: 'Depth Map', desc: 'Estimated depth' },
+export const CONDITIONING_TYPES: { value: ICLoraConditioningType; labelKey: string; descKey: string }[] = [
+  { value: 'canny', labelKey: 'icLora.canny', descKey: 'icLora.cannyDesc' },
+  { value: 'depth', labelKey: 'icLora.depth', descKey: 'icLora.depthDesc' },
 ]
 
 const IC_LORA_MODEL_IDS = ['ic_lora', 'depth_processor'] as const
@@ -75,11 +77,6 @@ const IC_LORA_MODEL_LABELS: Record<IcLoraModelId, string> = {
 const EMPTY_IC_MODEL_STATUS: Record<IcLoraModelId, boolean> = {
   ic_lora: false,
   depth_processor: false,
-}
-
-function pathToFileUrl(filePath: string): string {
-  const normalized = filePath.replace(/\\/g, '/')
-  return normalized.startsWith('/') ? `file://${normalized}` : `file:///${normalized}`
 }
 
 export function ICLoraPanel({
@@ -97,6 +94,7 @@ export function ICLoraPanel({
   outputVideoPath: _outputVideoPath,
   onChange,
 }: ICLoraPanelProps) {
+  const { t } = useTranslation()
   const inputVideoRef = useRef<HTMLVideoElement>(null)
   const [inputVideoUrl, setInputVideoUrl] = useState<string | null>(initialVideoUrl || null)
   const [inputVideoPath, setInputVideoPath] = useState<string | null>(initialVideoPath || null)
@@ -302,6 +300,7 @@ export function ICLoraPanel({
   }, [inputVideoUrl, icLoraReady, isCheckingIcLora])
 
   const handleBrowse = useCallback(async () => {
+    if (!isElectron) return
     const paths = await window.electronAPI.showOpenFileDialog({
       title: 'Select Driving Video',
       filters: [{ name: 'Video', extensions: ['mp4', 'mov', 'avi', 'webm', 'mkv'] }],
@@ -309,7 +308,7 @@ export function ICLoraPanel({
     if (paths && paths.length > 0) {
       const filePath = paths[0]
       setInputVideoPath(filePath)
-      setInputVideoUrl(pathToFileUrl(filePath))
+      setInputVideoUrl(pathToUrl(filePath))
       setConditioningPreview(null)
       setExtractError(null)
     }
@@ -347,9 +346,9 @@ export function ICLoraPanel({
     const file = e.dataTransfer.files?.[0]
     if (file) {
       const filePath = (file as unknown as { path?: string }).path
-      if (filePath) {
+      if (isElectron && filePath) {
         setInputVideoPath(filePath)
-        setInputVideoUrl(pathToFileUrl(filePath))
+        setInputVideoUrl(pathToUrl(filePath))
         setConditioningPreview(null)
         setExtractError(null)
       }
@@ -362,7 +361,7 @@ export function ICLoraPanel({
     const isCompleted = downloadProgress?.completed_files?.includes(modelId) ?? false
     const isCurrentDownload = isDownloadingIcLora && downloadProgress?.current_downloading_file === modelId
     const progress = downloaded ? 100 : (isCompleted ? 100 : (isCurrentDownload ? (downloadProgress?.current_file_progress ?? 0) : 0))
-    const status = downloaded ? 'Ready' : (isCompleted ? 'Complete' : (isCurrentDownload ? 'Downloading' : 'Missing'))
+    const status = downloaded ? t('icLora.ready') : (isCompleted ? t('icLora.complete') : (isCurrentDownload ? t('icLora.downloading') : t('icLora.missing')))
     return { id: modelId, label: IC_LORA_MODEL_LABELS[modelId], downloaded, progress, status }
   })
 
@@ -371,7 +370,7 @@ export function ICLoraPanel({
       <div className="flex items-center justify-between px-4 py-3 border-b border-zinc-800 flex-shrink-0">
         <div className="flex items-center gap-2">
           <Sparkles className="h-4 w-4 text-amber-400" />
-          <span className="text-sm font-semibold text-white">IC-LoRA / Style Transfer</span>
+          <span className="text-sm font-semibold text-white">{t('icLora.title')}</span>
         </div>
         {inputVideoUrl && (
           <div className="flex items-center gap-2">
@@ -401,9 +400,9 @@ export function ICLoraPanel({
                 <Download className="h-4 w-4 text-blue-400" />
               </div>
               <div className="flex-1 min-w-0">
-                <h3 className="text-sm font-semibold text-white">Download Required: IC-LoRA Resources</h3>
+                <h3 className="text-sm font-semibold text-white">{t('icLora.downloadRequired')}</h3>
                 <p className="text-xs text-zinc-400 mt-1">
-                  Editing is locked until all IC-LoRA preprocessing models are available locally.
+                  {t('icLora.downloadRequiredDesc')}
                 </p>
               </div>
             </div>
@@ -412,7 +411,7 @@ export function ICLoraPanel({
               {isCheckingIcLora ? (
                 <div className="flex items-center gap-2 text-xs text-zinc-300">
                   <Loader2 className="h-4 w-4 animate-spin text-blue-400" />
-                  Checking model availability...
+                  {t('icLora.checkingAvailability')}
                 </div>
               ) : (
                 <>
@@ -447,12 +446,12 @@ export function ICLoraPanel({
                       {isDownloadingIcLora ? (
                         <>
                           <Loader2 className="h-3 w-3 animate-spin" />
-                          Downloading...
+                          {t('icLora.downloading')}...
                         </>
                       ) : (
                         <>
                           <Download className="h-3 w-3" />
-                          {downloadError ? 'Retry Download' : 'Download Models'}
+                          {downloadError ? t('icLora.retryDownload') : t('icLora.downloadModels')}
                         </>
                       )}
                     </button>
@@ -474,7 +473,7 @@ export function ICLoraPanel({
         <div className="flex-1 flex min-h-0 overflow-hidden">
           <div className="flex-1 flex flex-col border-r border-zinc-800 min-w-0">
             <div className="px-3 py-2 border-b border-zinc-800 flex items-center justify-between gap-2">
-              <span className="text-[11px] font-semibold text-zinc-400 uppercase tracking-wider shrink-0">Input</span>
+              <span className="text-[11px] font-semibold text-zinc-400 uppercase tracking-wider shrink-0">{t('icLora.input')}</span>
               {inputVideoPath && (
                 <span className="text-[10px] text-zinc-500 truncate min-w-0">
                   {inputVideoPath.split(/[\\/]/).pop()}
@@ -485,7 +484,7 @@ export function ICLoraPanel({
                 className="flex items-center gap-1 px-2 py-0.5 rounded text-[10px] text-zinc-400 hover:text-white hover:bg-zinc-800 transition-colors shrink-0"
               >
                 <Upload className="h-3 w-3" />
-                Import
+                {t('icLora.import')}
               </button>
             </div>
             <div
@@ -506,12 +505,12 @@ export function ICLoraPanel({
                   <div className="w-12 h-12 rounded-full bg-zinc-800 flex items-center justify-center mx-auto mb-2">
                     <Film className="h-6 w-6 text-zinc-600" />
                   </div>
-                  <p className="text-zinc-400 text-xs">Drop or import a driving video</p>
+                  <p className="text-zinc-400 text-xs">{t('icLora.dropOrImportVideo')}</p>
                   <button
                     onClick={handleBrowse}
                     className="mt-2 px-3 py-1.5 text-[10px] text-blue-400 border border-blue-500/30 rounded-lg hover:bg-blue-600/10 transition-colors"
                   >
-                    Import Video
+                    {t('icLora.importVideo')}
                   </button>
                 </div>
               )}
@@ -520,7 +519,7 @@ export function ICLoraPanel({
 
           <div className="flex-1 flex flex-col min-w-0">
             <div className="px-3 py-2 border-b border-zinc-800 flex items-center justify-between gap-2">
-              <span className="text-[11px] font-semibold text-zinc-400 uppercase tracking-wider">Conditioning</span>
+              <span className="text-[11px] font-semibold text-zinc-400 uppercase tracking-wider">{t('icLora.conditioning')}</span>
               <button
                 onClick={() => { void extractConditioning() }}
                 disabled={!inputVideoPath || isExtracting}
@@ -540,7 +539,7 @@ export function ICLoraPanel({
               ) : (
                 <div className="text-center p-4">
                   <p className="text-zinc-600 text-xs">
-                    {inputVideoUrl ? 'Scrub the input video to see conditioning preview' : 'Import a video to preview conditioning'}
+                    {inputVideoUrl ? t('icLora.scrubToPreview') : t('icLora.importToPreview')}
                   </p>
                 </div>
               )}
@@ -550,7 +549,7 @@ export function ICLoraPanel({
           {/* Output column */}
           <div className="flex-1 flex flex-col border-l border-zinc-800 min-w-0">
             <div className="px-3 py-2 border-b border-zinc-800 flex items-center">
-              <span className="text-[11px] font-semibold text-zinc-400 uppercase tracking-wider">Output</span>
+              <span className="text-[11px] font-semibold text-zinc-400 uppercase tracking-wider">{t('icLora.output')}</span>
             </div>
             <div className="flex-1 bg-black flex items-center justify-center min-h-0 relative">
               {outputVideoUrl ? (
@@ -562,11 +561,11 @@ export function ICLoraPanel({
               ) : isProcessing ? (
                 <div className="text-center p-4">
                   <Loader2 className="h-6 w-6 text-blue-400 animate-spin mx-auto mb-2" />
-                  <p className="text-zinc-400 text-xs">{processingStatus || 'Generating...'}</p>
+                  <p className="text-zinc-400 text-xs">{processingStatus || t('icLora.generating')}...</p>
                 </div>
               ) : (
                 <div className="text-center p-4">
-                  <p className="text-zinc-600 text-xs">Output video will appear here</p>
+                  <p className="text-zinc-600 text-xs">{t('icLora.outputPlaceholder')}</p>
                 </div>
               )}
             </div>

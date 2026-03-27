@@ -61,6 +61,9 @@ coverage/
 
 # Models (too large for git - auto-downloaded on first run)
 # Keep the README but ignore all model files
+data/
+vendor/
+hf_cache/
 models/*
 !models/README.md
 backend/models/

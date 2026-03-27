@@ -5,12 +5,14 @@ from __future__ import annotations
 import base64
 import hmac
 from collections.abc import Awaitable, Callable
+from pathlib import Path
 from typing import TYPE_CHECKING
 
 from fastapi import FastAPI, Request
 from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import JSONResponse
+from fastapi.responses import JSONResponse, FileResponse
+from fastapi.staticfiles import StaticFiles
 from starlette.responses import Response as StarletteResponse
 
 from _routes._errors import HTTPError
@@ -21,6 +23,7 @@ from _routes.image_gen import router as image_gen_router
 from _routes.models import router as models_router
 from _routes.suggest_gap_prompt import router as suggest_gap_prompt_router
 from _routes.retake import router as retake_router
+from _routes.remote import router as remote_router
 from _routes.runtime_policy import router as runtime_policy_router
 from _routes.settings import router as settings_router
 from logging_policy import log_http_error, log_unhandled_exception
@@ -32,7 +35,11 @@ if TYPE_CHECKING:
 DEFAULT_ALLOWED_ORIGINS: list[str] = [
     "http://localhost:5173",
     "http://127.0.0.1:5173",
+    "http://localhost:3000",
+    "http://127.0.0.1:3000",
 ]
+
+FRONTEND_DIR = Path("/app/frontend")
 
 
 def create_app(
@@ -51,6 +58,7 @@ def create_app(
     app.add_middleware(
         CORSMiddleware,
         allow_origins=allowed_origins or DEFAULT_ALLOWED_ORIGINS,
+        allow_credentials=True,
         allow_methods=["*"],
         allow_headers=["*"],
     )
@@ -116,5 +124,24 @@ def create_app(
     app.include_router(retake_router)
     app.include_router(ic_lora_router)
     app.include_router(runtime_policy_router)
+    app.include_router(remote_router)
+
+    # ── Serve Outputs Directory (for web mode) ─────────────────────────
+    outputs_dir = handler.config.outputs_dir
+    if outputs_dir.exists() and outputs_dir.is_dir():
+        app.mount("/outputs", StaticFiles(directory=str(outputs_dir)), name="outputs")
+
+    # ── Serve Web Frontend (if exists) ─────────────────────────
+    if FRONTEND_DIR.exists() and FRONTEND_DIR.is_dir():
+        assets_dir = FRONTEND_DIR / "assets"
+        if assets_dir.exists():
+            app.mount("/assets", StaticFiles(directory=str(assets_dir)), name="assets")
+
+        @app.get("/{full_path:path}", include_in_schema=False)
+        async def serve_spa(full_path: str) -> FileResponse:
+            index_file = FRONTEND_DIR / "index.html"
+            if index_file.exists():
+                return FileResponse(str(index_file))
+            raise HTTPError(404, "Frontend not found")
 
     return app

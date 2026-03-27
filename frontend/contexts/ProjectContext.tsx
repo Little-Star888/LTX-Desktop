@@ -2,6 +2,7 @@ import React, { createContext, useContext, useState, useEffect, useCallback, use
 import type { Project, Asset, AssetTake, ViewType, ProjectTab, Timeline } from '../types/project'
 import { createDefaultTimeline } from '../types/project'
 import { logger } from '../lib/logger'
+import { isElectron } from '../lib/environment'
 
 interface ProjectContextType {
   // Navigation
@@ -119,6 +120,10 @@ function isRealPath(p: string): boolean {
 
 // Recover broken blob URLs by rebuilding file:// URLs from stored paths
 function recoverAssetUrls(project: Project): Project {
+  if (!isElectron) {
+    return project
+  }
+  
   let changed = false
   const fixedAssets = project.assets.map(asset => {
     // If the URL is a blob: URL and we have a real file path, recover it

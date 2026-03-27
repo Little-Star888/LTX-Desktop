@@ -160,6 +160,12 @@ LTX_API_BASE_URL = "https://api.ltx.video"
 
 
 def _resolve_force_api_generations() -> bool:
+    # Allow explicit override via environment variable (useful for Docker / headless).
+    env_override = os.environ.get("LTX_FORCE_API_GENERATIONS", "").strip().lower()
+    if env_override in ("1", "true", "yes"):
+        logger.info("Runtime policy force_api_generations=True (LTX_FORCE_API_GENERATIONS env override)")
+        return True
+
     gpu_info = GpuInfoImpl()
     system = platform.system()
     cuda_available = gpu_info.get_cuda_available()

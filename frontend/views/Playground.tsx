@@ -1,5 +1,6 @@
 import { useState, useRef, useEffect } from 'react'
 import { Sparkles, Trash2, Square, ImageIcon, ArrowLeft, Scissors } from 'lucide-react'
+import { useTranslation } from 'react-i18next'
 import { logger } from '../lib/logger'
 import { ImageUploader } from '../components/ImageUploader'
 import { AudioUploader } from '../components/AudioUploader'
@@ -37,6 +38,7 @@ const DEFAULT_SETTINGS: GenerationSettings = {
 }
 
 export function Playground() {
+  const { t } = useTranslation()
   const { goHome } = useProjects()
   const { forceApiGenerations, shouldVideoGenerateWithLtxApi } = useAppSettings()
   const [mode, setMode] = useState<GenerationMode>('text-to-video')
@@ -235,13 +237,13 @@ export function Playground() {
           <button 
             onClick={goHome}
             className="p-2 rounded-lg hover:bg-zinc-800 transition-colors"
-            title="Back to Home"
+            title={t('playground.backToHome')}
           >
             <ArrowLeft className="h-5 w-5 text-zinc-400" />
           </button>
           <div className="flex items-center gap-2.5">
             <LtxLogo className="h-6 w-auto text-white" />
-            <span className="text-zinc-400 text-base font-medium tracking-wide leading-none pt-1 pl-1.5">Playground</span>
+            <span className="text-zinc-400 text-base font-medium tracking-wide leading-none pt-1 pl-1.5">{t('playground.title')}</span>
           </div>
         </div>
         
@@ -344,11 +346,11 @@ export function Playground() {
 
             {/* Prompt Input */}
             <Textarea
-              label="Prompt"
-              placeholder="Write a prompt..."
+              label={t('playground.settings.title')}
+              placeholder={t('playground.promptPlaceholder')}
               value={prompt}
               onChange={(e) => setPrompt(e.target.value)}
-              helperText="Longer, detailed prompts lead to better, more accurate results."
+              helperText={t('playground.enterPrompt')}
               charCount={prompt.length}
               maxChars={5000}
               disabled={isBusy}
@@ -398,7 +400,7 @@ export function Playground() {
                 className="flex items-center gap-2 border-zinc-700 bg-zinc-800 text-white hover:bg-zinc-700"
               >
                 <Trash2 className="h-4 w-4" />
-                Clear all
+                {t('common.clear')}
               </Button>
               
               {isGenerating ? (
@@ -407,7 +409,7 @@ export function Playground() {
                   className="flex-1 flex items-center justify-center gap-2 bg-red-600 hover:bg-red-500 text-white"
                 >
                   <Square className="h-4 w-4" />
-                  Stop generation
+                  {t('playground.stopGeneration')}
                 </Button>
               ) : (
                 <Button
@@ -418,22 +420,22 @@ export function Playground() {
                   {isRetakeMode ? (
                     <>
                       <Scissors className="h-4 w-4" />
-                      {isRetaking ? 'Retaking...' : 'Retake'}
+                      {isRetaking ? t('retake.retaking') : t('retake.retake')}
                     </>
                   ) : isIcLoraMode ? (
                     <>
                       <Sparkles className="h-4 w-4" />
-                      {isIcLoraGenerating ? 'Generating...' : 'Generate IC-LoRA'}
+                      {isIcLoraGenerating ? t('icLora.generating') : t('icLora.generate')}
                     </>
                   ) : mode === 'text-to-image' ? (
                     <>
                       <ImageIcon className="h-4 w-4" />
-                      Generate image
+                      {t('playground.generateImage')}
                     </>
                   ) : (
                     <>
                       <Sparkles className="h-4 w-4" />
-                      Generate video
+                      {t('playground.generateVideo')}
                     </>
                   )}
                 </Button>

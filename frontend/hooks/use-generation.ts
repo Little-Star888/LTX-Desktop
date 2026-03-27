@@ -2,6 +2,7 @@ import { useState, useCallback, useRef } from 'react'
 import type { GenerationSettings } from '../components/SettingsPanel'
 import { backendFetch } from '../lib/backend'
 import { useAppSettings } from '../contexts/AppSettingsContext'
+import { pathToUrl } from '../lib/url-to-path'
 
 interface GenerationState {
   isGenerating: boolean
@@ -219,15 +220,14 @@ export function useGeneration(): UseGenerationReturn {
       const result = await response.json()
       
       if (result.status === 'complete' && result.video_path) {
-        // Convert Windows path to proper file:// URL
-        const videoPathNormalized = result.video_path.replace(/\\/g, '/')
-        const fileUrl = videoPathNormalized.startsWith('/') ? `file://${videoPathNormalized}` : `file:///${videoPathNormalized}`
+        // Convert path to URL (file:// in Electron, /outputs in web)
+        const videoUrl = pathToUrl(result.video_path)
         
         setState({
           isGenerating: false,
           progress: 100,
           statusMessage: 'Complete!',
-          videoUrl: fileUrl,
+          videoUrl,
           videoPath: result.video_path,  // Keep original path for API calls
           imageUrl: null,
           imagePath: null,
@@ -407,11 +407,8 @@ export function useGeneration(): UseGenerationReturn {
         }
         
         if (rawPaths.length > 0) {
-          // Convert all paths to file URLs
-          const fileUrls = rawPaths.map((path: string) => {
-            const imagePath = path.replace(/\\/g, '/')
-            return imagePath.startsWith('/') ? `file://${imagePath}` : `file:///${imagePath}`
-          })
+          // Convert all paths to URLs (file:// in Electron, /outputs in web)
+          const urls = rawPaths.map((path: string) => pathToUrl(path))
           
           setState({
             isGenerating: false,
@@ -419,9 +416,9 @@ export function useGeneration(): UseGenerationReturn {
             statusMessage: 'Complete!',
             videoUrl: null,
             videoPath: null,
-            imageUrl: fileUrls[0],  // First image for backwards compatibility
+            imageUrl: urls[0],  // First image for backwards compatibility
             imagePath: rawPaths[0],  // First image path
-            imageUrls: fileUrls,    // All images
+            imageUrls: urls,    // All images
             imagePaths: rawPaths,   // All image paths
             error: null,
           })

@@ -4,6 +4,8 @@ import { DEFAULT_COLOR_CORRECTION, DEFAULT_LETTERBOX, EFFECT_DEFINITIONS, DEFAUL
 import type { ParsedTimeline } from '../../lib/timeline-import'
 import { exportFcp7Xml } from '../../lib/timeline-import'
 import { resolveOverlaps, DEFAULT_DISSOLVE_DURATION } from './video-editor-utils'
+import { pathToUrl } from '../../lib/url-to-path'
+import { isElectron } from '../../lib/environment'
 
 interface UseClipOperationsParams {
   clips: TimelineClip[]
@@ -175,10 +177,9 @@ export function useClipOperations(params: UseClipOperationsParams) {
       let persistentUrl: string
       let persistentPath: string
       
-      if (electronFilePath) {
+      if (isElectron && electronFilePath) {
         // Reference the original file in place (no copy)
-        const normalized = electronFilePath.replace(/\\/g, '/')
-        persistentUrl = normalized.startsWith('/') ? `file://${normalized}` : `file:///${normalized}`
+        persistentUrl = pathToUrl(electronFilePath)
         persistentPath = electronFilePath
       } else {
         // Non-Electron environment: use blob URL
@@ -523,10 +524,9 @@ export function useClipOperations(params: UseClipOperationsParams) {
       let url = ''
       let assetPath = filePath
       
-      // If file is found, build a file:// URL referencing the original location (no copy)
+      // If file is found, build a URL referencing the original location (no copy)
       if (ref.found && filePath) {
-        const normalized = filePath.replace(/\\/g, '/')
-        url = normalized.startsWith('/') ? `file://${normalized}` : `file:///${normalized}`
+        url = pathToUrl(filePath)
         assetPath = filePath
       }
       

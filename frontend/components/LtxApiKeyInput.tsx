@@ -1,5 +1,7 @@
 import React, { forwardRef } from 'react'
 import { ExternalLink, KeyRound } from 'lucide-react'
+import { useTranslation } from 'react-i18next'
+import { isElectron } from '../lib/environment'
 
 interface LtxApiKeyInputProps {
   value: string
@@ -39,9 +41,10 @@ interface ApiKeyHelperRowProps {
 }
 
 export function ApiKeyHelperRow({ stopPropagation, label = 'Get API key', onOpenKey }: ApiKeyHelperRowProps) {
+  const { t } = useTranslation()
   return (
     <div className="mt-2 flex items-center justify-between gap-3">
-      <span className="text-xs text-zinc-500">Your key stays in your local app settings.</span>
+      <span className="text-xs text-zinc-500">{t('settings.keyStaysLocal')}</span>
       <button
         type="button"
         onClick={(e) => {
@@ -62,11 +65,18 @@ interface LtxApiKeyHelperRowProps {
 }
 
 export function LtxApiKeyHelperRow({ stopPropagation }: LtxApiKeyHelperRowProps) {
+  const { t } = useTranslation()
   return (
     <ApiKeyHelperRow
       stopPropagation={stopPropagation}
-      label="Get API key"
-      onOpenKey={() => window.electronAPI.openLtxApiKeyPage()}
+      label={t('settings.getApiKey')}
+      onOpenKey={() => {
+        if (isElectron) {
+          window.electronAPI.openLtxApiKeyPage()
+        } else {
+          window.open('https://ltx.studio/api', '_blank')
+        }
+      }}
     />
   )
 }

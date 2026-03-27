@@ -1,9 +1,42 @@
+# Dependencies (not needed for build)
 node_modules
-python-embed
-dist
-dist-electron
-release
-backend/.venv
-backend/outputs
-backend/models
+
+# VCS
 .git
+.gitignore
+.github
+
+# IDE
+.vscode
+.cursorignore
+
+# Root docs & licenses (not needed for runtime)
+*.md
+LICENSE.txt
+NOTICES.md
+
+# Docker files themselves
+.dockerignore
+docker-compose*.yml
+Dockerfile
+
+# Backend files not needed at runtime
+backend/tests
+backend/.venv
+backend/__pycache__
+backend/**/__pycache__
+backend/**/.pyc
+
+# Build outputs (will be generated during build)
+release
+dist
+dist-web
+
+# Electron specific (not needed for web build)
+electron
+resources
+public
+images
+build-resources
+scripts
+docs

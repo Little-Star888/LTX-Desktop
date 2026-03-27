@@ -1,5 +1,6 @@
 import { Select } from './ui/select'
 import type { GenerationMode } from './ModeTabs'
+import { useTranslation } from 'react-i18next'
 import {
   FORCED_API_VIDEO_FPS,
   FORCED_API_VIDEO_RESOLUTIONS,
@@ -39,6 +40,7 @@ export function SettingsPanel({
   forceApiGenerations = false,
   hasAudio = false,
 }: SettingsPanelProps) {
+  const { t } = useTranslation()
   const isImageMode = mode === 'text-to-image'
   const LOCAL_MAX_DURATION: Record<string, number> = { '540p': 20, '720p': 10, '1080p': 5 }
 
@@ -73,44 +75,41 @@ export function SettingsPanel({
   if (isImageMode) {
     return (
       <div className="space-y-4">
-        {/* Aspect Ratio and Quality side by side */}
         <div className="grid grid-cols-2 gap-3">
           <Select
-            label="Aspect Ratio"
+            label={t('playground.settings.aspectRatio')}
             value={settings.imageAspectRatio || '16:9'}
             onChange={(e) => handleChange('imageAspectRatio', e.target.value)}
             disabled={disabled}
           >
-            <option value="1:1">1:1 (Square)</option>
-            <option value="16:9">16:9 (Landscape)</option>
-            <option value="9:16">9:16 (Portrait)</option>
-            <option value="4:3">4:3 (Standard)</option>
-            <option value="3:4">3:4 (Portrait Standard)</option>
-            <option value="21:9">21:9 (Cinematic)</option>
+            <option value="1:1">1:1 ({t('settings.square')})</option>
+            <option value="16:9">16:9 ({t('settings.landscape')})</option>
+            <option value="9:16">9:16 ({t('settings.portrait')})</option>
+            <option value="4:3">4:3 ({t('settings.standard')})</option>
+            <option value="3:4">3:4 ({t('settings.portraitStandard')})</option>
+            <option value="21:9">21:9 ({t('settings.cinematic')})</option>
           </Select>
 
           <Select
-            label="Quality"
+            label={t('settings.quality')}
             value={settings.imageSteps || 4}
             onChange={(e) => handleChange('imageSteps', parseInt(e.target.value))}
             disabled={disabled}
           >
-            <option value={4}>Fast</option>
-            <option value={8}>Balanced</option>
-            <option value={12}>High</option>
+            <option value={4}>{t('settings.fast')}</option>
+            <option value={8}>{t('settings.balanced')}</option>
+            <option value={12}>{t('settings.high')}</option>
           </Select>
         </div>
       </div>
     )
   }
 
-  // Video mode settings
   return (
     <div className="space-y-4">
-      {/* Model Selection */}
       {!forceApiGenerations ? (
         <Select
-          label="Model"
+          label={t('playground.settings.model')}
           value={settings.model}
           onChange={(e) => handleChange('model', e.target.value)}
           disabled={disabled}
@@ -119,7 +118,7 @@ export function SettingsPanel({
         </Select>
       ) : (
         <Select
-          label="Model"
+          label={t('playground.settings.model')}
           value={settings.model}
           onChange={(e) => handleChange('model', e.target.value)}
           disabled={disabled}
@@ -129,23 +128,22 @@ export function SettingsPanel({
         </Select>
       )}
 
-      {/* Duration, Resolution, FPS Row */}
       <div className="grid grid-cols-3 gap-3">
         <Select
-          label="Duration"
+          label={t('playground.settings.duration')}
           value={settings.duration}
           onChange={(e) => handleChange('duration', parseInt(e.target.value))}
           disabled={disabled}
         >
           {durationOptions.map((duration) => (
             <option key={duration} value={duration}>
-              {duration} sec
+              {duration} {t('settings.sec')}
             </option>
           ))}
         </Select>
 
         <Select
-          label="Resolution"
+          label={t('playground.settings.resolution')}
           value={settings.videoResolution}
           onChange={(e) => handleChange('videoResolution', e.target.value)}
           disabled={disabled}
@@ -158,7 +156,7 @@ export function SettingsPanel({
         </Select>
 
         <Select
-          label="FPS"
+          label={t('playground.settings.fps')}
           value={settings.fps}
           onChange={(e) => handleChange('fps', parseInt(e.target.value))}
           disabled={disabled}
@@ -171,54 +169,52 @@ export function SettingsPanel({
         </Select>
       </div>
 
-      {/* Aspect Ratio */}
       <Select
-        label="Aspect Ratio"
+        label={t('playground.settings.aspectRatio')}
         value={settings.aspectRatio || '16:9'}
         onChange={(e) => handleChange('aspectRatio', e.target.value)}
         disabled={disabled}
       >
         {hasAudio ? (
-          <option value="16:9">16:9 Landscape</option>
+          <option value="16:9">16:9 {t('settings.landscape')}</option>
         ) : (
           <>
-            <option value="16:9">16:9 Landscape</option>
-            <option value="9:16">9:16 Portrait</option>
+            <option value="16:9">16:9 {t('settings.landscape')}</option>
+            <option value="9:16">9:16 {t('settings.portrait')}</option>
           </>
         )}
       </Select>
 
-      {/* Audio and Camera Motion Row */}
       <div className="flex gap-3">
         <div className="w-[140px] flex-shrink-0">
           <Select
-            label="Audio"
+            label={t('playground.settings.audio')}
             badge="PREVIEW"
             value={settings.audio ? 'on' : 'off'}
             onChange={(e) => handleChange('audio', e.target.value === 'on')}
             disabled={disabled}
           >
-            <option value="on">On</option>
-            <option value="off">Off</option>
+            <option value="on">{t('settings.on')}</option>
+            <option value="off">{t('settings.off')}</option>
           </Select>
         </div>
 
         <div className="flex-1">
           <Select
-            label="Camera Motion"
+            label={t('playground.settings.cameraMotion')}
             value={settings.cameraMotion}
             onChange={(e) => handleChange('cameraMotion', e.target.value)}
             disabled={disabled}
           >
-            <option value="none">None</option>
-            <option value="static">Static</option>
-            <option value="focus_shift">Focus Shift</option>
-            <option value="dolly_in">Dolly In</option>
-            <option value="dolly_out">Dolly Out</option>
-            <option value="dolly_left">Dolly Left</option>
-            <option value="dolly_right">Dolly Right</option>
-            <option value="jib_up">Jib Up</option>
-            <option value="jib_down">Jib Down</option>
+            <option value="none">{t('settings.none')}</option>
+            <option value="static">{t('settings.static')}</option>
+            <option value="focus_shift">{t('settings.focusShift')}</option>
+            <option value="dolly_in">{t('settings.dollyIn')}</option>
+            <option value="dolly_out">{t('settings.dollyOut')}</option>
+            <option value="dolly_left">{t('settings.dollyLeft')}</option>
+            <option value="dolly_right">{t('settings.dollyRight')}</option>
+            <option value="jib_up">{t('settings.jibUp')}</option>
+            <option value="jib_down">{t('settings.jibDown')}</option>
           </Select>
         </div>
       </div>
