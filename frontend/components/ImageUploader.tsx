@@ -1,9 +1,10 @@
-import { useCallback } from 'react'
+import { useCallback, useState, useEffect } from 'react'
 import { useDropzone } from 'react-dropzone'
-import { Upload, Image as ImageIcon, RefreshCw, Trash2 } from 'lucide-react'
+import { Upload, Image as ImageIcon, RefreshCw, Trash2, Loader2 } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import { cn } from '@/lib/utils'
 import { isElectron } from '../lib/environment'
+import { api } from '../lib/api'
 
 interface ImageUploaderProps {
   onImageSelect: (path: string | null) => void
@@ -12,21 +13,42 @@ interface ImageUploaderProps {
 
 export function ImageUploader({ onImageSelect, selectedImage }: ImageUploaderProps) {
   const { t } = useTranslation()
+  const [isUploading, setIsUploading] = useState(false)
+  const [uploadError, setUploadError] = useState<string | null>(null)
   
-  const onDrop = useCallback((acceptedFiles: File[]) => {
+  useEffect(() => {
+    if (uploadError) {
+      const timer = setTimeout(() => setUploadError(null), 5000)
+      return () => clearTimeout(timer)
+    }
+  }, [uploadError])
+  
+  const onDrop = useCallback(async (acceptedFiles: File[]) => {
     const file = acceptedFiles[0]
-    if (file) {
-      // In Electron, File objects have a .path property with the full filesystem path
+    if (!file) return
+    
+    setUploadError(null)
+    
+    if (isElectron) {
       const filePath = (file as any).path as string | undefined
-      if (isElectron && filePath) {
+      if (filePath) {
         const normalized = filePath.replace(/\\/g, '/')
         const fileUrl = normalized.startsWith('/') ? `file://${normalized}` : `file:///${normalized}`
         onImageSelect(fileUrl)
-      } else {
-        // In web mode, use blob URL
-        const url = URL.createObjectURL(file)
-        onImageSelect(url)
+        return
       }
+    }
+    
+    setIsUploading(true)
+    try {
+      const previewUrl = URL.createObjectURL(file)
+      const result = await api.uploadImage(file)
+      onImageSelect(`uploaded|${result.file_id}|${previewUrl}`)
+    } catch (error) {
+      setUploadError(error instanceof Error ? error.message : 'Upload failed')
+      onImageSelect(null)
+    } finally {
+      setIsUploading(false)
     }
   }, [onImageSelect])
 
@@ -52,19 +74,33 @@ export function ImageUploader({ onImageSelect, selectedImage }: ImageUploaderPro
     open()
   }
 
-  // Extract and truncate filename from path for display
   const getDisplayName = (path: string | null): string => {
     if (!path) return ''
-    // Extract filename from path or URL
+    if (path.startsWith('uploaded|')) {
+      const parts = path.split('|')
+      const filePath = parts[1] || ''
+      return filePath.split(/[/\\]/).pop() || 'uploaded image'
+    }
     const name = path.split(/[/\\]/).pop()?.replace(/^file:/, '') || path
     const decoded = decodeURIComponent(name)
     const maxLength = 28
     if (decoded.length <= maxLength) return decoded
     const ext = decoded.split('.').pop() || ''
     const baseName = decoded.slice(0, decoded.length - ext.length - 1)
-    const truncatedBase = baseName.slice(0, maxLength - ext.length - 4) // 4 for '...' and '.'
+    const truncatedBase = baseName.slice(0, maxLength - ext.length - 4)
     return `${truncatedBase}...${ext ? '.' + ext : ''}`
   }
+
+  const getPreviewUrl = (path: string | null): string | null => {
+    if (!path) return null
+    if (path.startsWith('uploaded|')) {
+      const parts = path.split('|')
+      return parts[2] || null
+    }
+    return path
+  }
+
+  const previewUrl = getPreviewUrl(selectedImage)
 
   return (
     <div className="w-full">
@@ -77,16 +113,22 @@ export function ImageUploader({ onImageSelect, selectedImage }: ImageUploaderPro
           'relative border border-dashed border-zinc-600 rounded-lg cursor-pointer transition-colors',
           'hover:border-zinc-500',
           isDragActive && 'border-blue-500 bg-blue-500/5',
-          selectedImage ? 'p-3' : 'p-6'
+          selectedImage ? 'p-3' : 'p-6',
+          isUploading && 'opacity-50 pointer-events-none'
         )}
       >
-        <input {...getInputProps()} />
+        <input {...getInputProps()} disabled={isUploading} />
 
-        {selectedImage ? (
+        {isUploading ? (
+          <div className="flex items-center justify-center gap-3 py-2">
+            <Loader2 className="h-5 w-5 text-blue-400 animate-spin" />
+            <p className="text-sm text-zinc-400">Uploading...</p>
+          </div>
+        ) : previewUrl ? (
           <div className="flex items-center gap-3">
             <div className="w-14 h-14 flex-shrink-0 rounded-md overflow-hidden bg-zinc-800">
               <img
-                src={selectedImage}
+                src={previewUrl}
                 alt={t('genSpace.selectImage')}
                 className="w-full h-full object-cover"
               />
@@ -135,6 +177,9 @@ export function ImageUploader({ onImageSelect, selectedImage }: ImageUploaderPro
           </div>
         )}
       </div>
+      {uploadError && (
+        <p className="text-xs text-red-400 mt-2">{uploadError}</p>
+      )}
       <p className="text-xs text-zinc-500 mt-2">
         {t('playground.upload.supportedFormats', { formats: 'png, jpeg, webp' })}. {t('playground.upload.maxSize', { size: '10MB' })}
       </p>

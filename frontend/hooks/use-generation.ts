@@ -148,10 +148,13 @@ export function useGeneration(): UseGenerationReturn {
       }
       if (imagePath) {
         body.imagePath = imagePath
+        console.log('[DEBUG] imagePath:', imagePath)
       }
       if (audioPath) {
         body.audioPath = audioPath
+        console.log('[DEBUG] audioPath:', audioPath)
       }
+      console.log('[DEBUG] Request body:', JSON.stringify(body, null, 2))
 
       // Poll for real progress from backend with time-based interpolation
       let lastPhase = ''

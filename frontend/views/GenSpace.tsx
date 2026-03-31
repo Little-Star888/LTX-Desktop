@@ -18,6 +18,7 @@ import { GenerationErrorDialog } from '../components/GenerationErrorDialog'
 import { copyToAssetFolder } from '../lib/asset-copy'
 import { fileUrlToPath, pathToUrl } from '../lib/url-to-path'
 import { isElectron } from '../lib/environment'
+import { api } from '../lib/api'
 import {
   FORCED_API_VIDEO_FPS,
   FORCED_API_VIDEO_RESOLUTIONS,
@@ -392,64 +393,149 @@ function PromptBar({
     : ['540p', '720p', '1080p']
   const videoFpsOptions = shouldVideoGenerateWithLtxApi ? [...FORCED_API_VIDEO_FPS] : [24, 25, 50]
 
-  const handleDrop = (e: React.DragEvent) => {
+  const getPreviewUrl = (url: string | null): string | null => {
+    if (!url) return null
+    if (url.startsWith('uploaded|')) {
+      const parts = url.split('|')
+      return parts[2] || null
+    }
+    return url
+  }
+
+  const hasInputImage = inputImage && (inputImage.startsWith('uploaded|') || inputImage.startsWith('file://') || inputImage.startsWith('blob:'))
+  const hasInputAudio = inputAudio && (inputAudio.startsWith('uploaded|') || inputAudio.startsWith('file://') || inputAudio.startsWith('blob:'))
+
+  const handleDrop = async (e: React.DragEvent) => {
     e.preventDefault()
     setIsDragOver(false)
+    console.log('[DEBUG] handleDrop called')
 
     const assetData = e.dataTransfer.getData('asset')
     if (assetData) {
       const asset = JSON.parse(assetData) as Asset
       if (asset.type === 'image') {
+        console.log('[DEBUG] Asset drop, url:', asset.url)
         onInputImageChange(asset.url)
-      }
-    }
-  }
-
-  const handleAudioDrop = (e: React.DragEvent) => {
-    e.preventDefault()
-    setIsAudioDragOver(false)
-
-    const assetData = e.dataTransfer.getData('asset')
-    if (assetData) {
-      const asset = JSON.parse(assetData) as Asset
-      if (asset.type === 'audio') {
-        onInputAudioChange(asset.url)
+        return
       }
     }
 
-    // Handle file drops
     const file = e.dataTransfer.files?.[0]
-    if (file) {
-      const ext = file.name.split('.').pop()?.toLowerCase()
-      if (['mp3', 'wav', 'ogg', 'aac', 'flac', 'm4a'].includes(ext || '')) {
-        const filePath = (file as any).path as string | undefined
-        if (isElectron && filePath) {
-          onInputAudioChange(pathToUrl(filePath))
+    console.log('[DEBUG] Dropped file:', file)
+    if (file && file.type.startsWith('image/')) {
+      const filePath = (file as any).path as string | undefined
+      console.log('[DEBUG] isElectron:', isElectron, 'filePath:', filePath)
+      if (isElectron && filePath) {
+        const url = pathToUrl(filePath)
+        console.log('[DEBUG] Electron mode, setting inputImage to:', url)
+        onInputImageChange(url)
+      } else {
+        try {
+          const previewUrl = URL.createObjectURL(file)
+          console.log('[DEBUG] Web mode, uploading image...')
+          const result = await api.uploadImage(file)
+          console.log('[DEBUG] Upload result:', result)
+          const uploadedUrl = `uploaded|${result.file_id}|${previewUrl}`
+          console.log('[DEBUG] Setting inputImage to:', uploadedUrl)
+          onInputImageChange(uploadedUrl)
+        } catch (error) {
+          console.error('Failed to upload image:', error)
         }
       }
     }
   }
 
-  const handleAudioFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0]
+  const handleAudioDrop = async (e: React.DragEvent) => {
+    e.preventDefault()
+    setIsAudioDragOver(false)
+    console.log('[DEBUG] handleAudioDrop called')
+
+    const assetData = e.dataTransfer.getData('asset')
+    if (assetData) {
+      const asset = JSON.parse(assetData) as Asset
+      if (asset.type === 'audio') {
+        console.log('[DEBUG] Asset drop, url:', asset.url)
+        onInputAudioChange(asset.url)
+        return
+      }
+    }
+
+    const file = e.dataTransfer.files?.[0]
+    console.log('[DEBUG] Dropped audio file:', file)
     if (file) {
-      const filePath = (file as any).path as string | undefined
-      if (isElectron && filePath) {
-        onInputAudioChange(pathToUrl(filePath))
+      const ext = file.name.split('.').pop()?.toLowerCase()
+      if (['mp3', 'wav', 'ogg', 'aac', 'flac', 'm4a'].includes(ext || '')) {
+        const filePath = (file as any).path as string | undefined
+        console.log('[DEBUG] isElectron:', isElectron, 'filePath:', filePath)
+        if (isElectron && filePath) {
+          const url = pathToUrl(filePath)
+          console.log('[DEBUG] Electron mode, setting inputAudio to:', url)
+          onInputAudioChange(url)
+        } else {
+          try {
+            const previewUrl = URL.createObjectURL(file)
+            console.log('[DEBUG] Web mode, uploading audio...')
+            const result = await api.uploadAudio(file)
+            console.log('[DEBUG] Upload result:', result)
+            const uploadedUrl = `uploaded|${result.file_id}|${previewUrl}`
+            console.log('[DEBUG] Setting inputAudio to:', uploadedUrl)
+            onInputAudioChange(uploadedUrl)
+          } catch (error) {
+            console.error('Failed to upload audio:', error)
+          }
+        }
       }
     }
   }
 
-  const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
+  const handleAudioFileSelect = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0]
-    if (file && file.type.startsWith('image/')) {
-      // In Electron, File objects have a .path property with the full filesystem path
+    console.log('[DEBUG] handleAudioFileSelect called, file:', file)
+    if (file) {
       const filePath = (file as any).path as string | undefined
+      console.log('[DEBUG] isElectron:', isElectron, 'filePath:', filePath)
       if (isElectron && filePath) {
-        onInputImageChange(pathToUrl(filePath))
+        const url = pathToUrl(filePath)
+        console.log('[DEBUG] Electron mode, setting inputAudio to:', url)
+        onInputAudioChange(url)
       } else {
-        const url = URL.createObjectURL(file)
+        try {
+          const previewUrl = URL.createObjectURL(file)
+          console.log('[DEBUG] Web mode, uploading audio...')
+          const result = await api.uploadAudio(file)
+          console.log('[DEBUG] Upload result:', result)
+          const uploadedUrl = `uploaded|${result.file_id}|${previewUrl}`
+          console.log('[DEBUG] Setting inputAudio to:', uploadedUrl)
+          onInputAudioChange(uploadedUrl)
+        } catch (error) {
+          console.error('Failed to upload audio:', error)
+        }
+      }
+    }
+  }
+
+  const handleFileSelect = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0]
+    console.log('[DEBUG] handleFileSelect called, file:', file)
+    if (file && file.type.startsWith('image/')) {
+      const filePath = (file as any).path as string | undefined
+      console.log('[DEBUG] isElectron:', isElectron, 'filePath:', filePath)
+      if (isElectron && filePath) {
+        const url = pathToUrl(filePath)
+        console.log('[DEBUG] Electron mode, setting inputImage to:', url)
         onInputImageChange(url)
+      } else {
+        try {
+          const previewUrl = URL.createObjectURL(file)
+          console.log('[DEBUG] Web mode, uploading image...')
+          const result = await api.uploadImage(file)
+          console.log('[DEBUG] Upload result:', result)
+          const uploadedUrl = `uploaded|${result.file_id}|${previewUrl}`
+          console.log('[DEBUG] Setting inputImage to:', uploadedUrl)
+          onInputImageChange(uploadedUrl)
+        } catch (error) {
+          console.error('Failed to upload image:', error)
+        }
       }
     }
   }
@@ -476,9 +562,9 @@ function PromptBar({
             onDrop={handleDrop}
             onClick={() => inputRef.current?.click()}
           >
-            {inputImage ? (
+            {hasInputImage ? (
               <>
-                <img src={inputImage} alt="" className="w-full h-full object-cover rounded-md" />
+                <img src={getPreviewUrl(inputImage) || ''} alt="" className="w-full h-full object-cover rounded-md" />
                 <button
                   onClick={(e) => { e.stopPropagation(); onInputImageChange(null) }}
                   className="absolute -top-1 -right-1 p-0.5 rounded-full bg-zinc-800 text-zinc-400 hover:text-white z-10"
@@ -503,15 +589,15 @@ function PromptBar({
         {mode === 'video' && !isRetake && !isIcLora && (
           <div
             className={`relative w-10 h-10 mt-2 rounded-lg border-2 border-dashed transition-colors flex items-center justify-center flex-shrink-0 cursor-pointer ${
-              isAudioDragOver ? 'border-emerald-500 bg-emerald-500/10' : inputAudio ? 'border-emerald-600' : 'border-zinc-700 hover:border-zinc-500'
+              isAudioDragOver ? 'border-emerald-500 bg-emerald-500/10' : hasInputAudio ? 'border-emerald-600' : 'border-zinc-700 hover:border-zinc-500'
             }`}
             onDragOver={(e) => { e.preventDefault(); setIsAudioDragOver(true) }}
             onDragLeave={() => setIsAudioDragOver(false)}
             onDrop={handleAudioDrop}
             onClick={() => audioInputRef.current?.click()}
-            title={inputAudio ? 'Audio attached — click to change' : 'Attach audio for A2V'}
+            title={hasInputAudio ? 'Audio attached — click to change' : 'Attach audio for A2V'}
           >
-            {inputAudio ? (
+            {hasInputAudio ? (
               <>
                 <Music className="h-4 w-4 text-emerald-400" />
                 <button
@@ -1342,9 +1428,23 @@ export function GenSpace() {
       )
     } else {
       // Generate video (t2v if no image/audio, i2v if image, a2v if audio)
-      // Extract filesystem path from the file:// URL for the backend
-      const imagePath = inputImage ? fileUrlToPath(inputImage) : null
-      const audioPath = inputAudio ? fileUrlToPath(inputAudio) : null
+      // Extract filesystem path from the file:// URL or uploaded:path format for the backend
+      const resolvePath = (url: string | null): string | null => {
+        console.log('[DEBUG] resolvePath input:', url)
+        if (!url) return null
+        if (url.startsWith('uploaded|')) {
+          const parts = url.split('|')
+          console.log('[DEBUG] resolvePath uploaded format, parts:', parts)
+          return parts[1] || null
+        }
+        const result = fileUrlToPath(url)
+        console.log('[DEBUG] resolvePath fileUrlToPath result:', result)
+        return result
+      }
+      const imagePath = resolvePath(inputImage)
+      const audioPath = resolvePath(inputAudio)
+      console.log('[DEBUG] Final imagePath:', imagePath)
+      console.log('[DEBUG] Final audioPath:', audioPath)
       const videoSettings = applyForcedVideoSettings(settings)
       if (audioPath) videoSettings.model = 'pro'
 

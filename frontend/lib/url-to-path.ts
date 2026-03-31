@@ -1,10 +1,17 @@
 import { isElectron } from './environment'
 
 /**
- * Extract a filesystem path from a `file://` URL.
- * Returns `null` when the URL is not a file URL.
+ * Extract a filesystem path from a `file://` URL or `uploaded|` format.
+ * Returns `null` when the URL is not a valid path.
+ * 
+ * `uploaded|` format: uploaded|/path/to/file|blob:preview_url
+ * The second part is the actual file path.
  */
 export function fileUrlToPath(url: string): string | null {
+  if (url.startsWith('uploaded|')) {
+    const parts = url.split('|')
+    return parts[1] || null
+  }
   if (url.startsWith('file://')) {
     let p = decodeURIComponent(url.slice(7)) // file:///Users/x -> /Users/x
     if (/^\/[A-Za-z]:/.test(p)) p = p.slice(1)
