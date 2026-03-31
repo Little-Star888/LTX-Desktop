@@ -33,7 +33,7 @@ curl http://localhost:8000/health
 **响应示例:**
 ```json
 {
-  "status": "healthy",
+  "status": "ok",
   "models_loaded": false,
   "active_model": null,
   "gpu_info": {
@@ -43,7 +43,7 @@ curl http://localhost:8000/health
   },
   "sage_attention": false,
   "models_status": [
-    {"id": "checkpoint", "name": "ltx-2.3-22b-distilled", "loaded": false, "downloaded": false}
+    {"id": "fast", "name": "LTX-2 Fast (Distilled)", "loaded": false, "downloaded": false}
   ]
 }
 ```
@@ -261,7 +261,7 @@ curl -X POST http://localhost:8000/api/generate \
   -H "Content-Type: application/json" \
   -d '{
     "prompt": "a beautiful sunset over ocean waves, cinematic",
-    "resolution": "768p",
+    "resolution": "720p",
     "model": "fast",
     "duration": "5",
     "fps": "24",
@@ -277,10 +277,10 @@ curl -X POST http://localhost:8000/api/generate \
 | 参数 | 类型 | 默认值 | 说明 |
 |------|------|--------|------|
 | `prompt` | string | 必需 | 提示词 |
-| `resolution` | string | "512p" | 分辨率: 512p, 768p |
-| `model` | string | "fast" | 模型: fast (distilled), pro (full) |
-| `duration` | string | "2" | 时长: 2, 5, 10 秒 |
-| `fps` | string | "24" | 帧率: 24, 30 |
+| `resolution` | string | "512p" | 分辨率: 540p, 720p, 1080p (不支持值会映射到 540p) |
+| `model` | string | "fast" | 模型: fast (本地仅支持 fast) |
+| `duration` | string | "2" | 时长 (秒): 受分辨率限制，见附录 C |
+| `fps` | string | "24" | 帧率: 24, 25, 50 |
 | `aspectRatio` | string | "16:9" | 宽高比: 16:9, 9:16 |
 | `cameraMotion` | string | "none" | 相机运动: none, dolly_in, dolly_out, dolly_left, dolly_right, jib_up, jib_down, static, focus_shift |
 | `negativePrompt` | string | "" | 负面提示词 |
@@ -306,9 +306,9 @@ curl -X POST http://localhost:8000/api/generate \
   -d '{
     "prompt": "camera moving forward slowly",
     "imagePath": "/home/bread/poker/LTX-Desktop/data/outputs/zit_image_20260327_020927_74aee54b.png",
-    "resolution": "768p",
+    "resolution": "720p",
     "model": "fast",
-    "duration": "10"
+    "duration": "5"
   }'
 ```
 
@@ -323,10 +323,12 @@ curl -X POST http://localhost:8000/api/generate \
     "prompt": "music visualization with abstract shapes",
     "audioPath": "/data/uploads/audio.wav",
     "audio": "true",
-    "resolution": "768p",
+    "resolution": "720p",
     "duration": "5"
   }'
 ```
+
+> **注意:** 音频生视频 (A2V) 使用不同的分辨率映射，详见附录 C。
 
 ---
 
@@ -386,10 +388,10 @@ curl -X POST http://localhost:8000/api/generate-image \
 | 参数 | 类型 | 默认值 | 说明 |
 |------|------|--------|------|
 | `prompt` | string | 必需 | 提示词 |
-| `width` | int | 1024 | 图片宽度 |
-| `height` | int | 1024 | 图片高度 |
+| `width` | int | 1024 | 图片宽度 (会被对齐到 16 的倍数) |
+| `height` | int | 1024 | 图片高度 (会被对齐到 16 的倍数) |
 | `numSteps` | int | 4 | 推理步数 |
-| `numImages` | int | 1 | 生成图片数量 |
+| `numImages` | int | 1 | 生成图片数量 (1-12) |
 
 **响应示例:**
 ```json
@@ -425,7 +427,7 @@ curl -X POST http://localhost:8000/api/retake \
 |------|------|--------|------|
 | `video_path` | string | 必需 | 视频文件路径 |
 | `start_time` | float | 必需 | 开始时间 (秒) |
-| `duration` | float | 必需 | 重生成时长 (秒) |
+| `duration` | float | 必需 | 重生成时长 (秒)，最小 2 秒 |
 | `prompt` | string | "" | 提示词 |
 | `mode` | string | "replace_audio_and_video" | 模式 |
 
@@ -476,12 +478,14 @@ curl -X POST http://localhost:8000/api/ic-lora/extract-conditioning \
 **响应示例:**
 ```json
 {
-  "conditioning": "/data/outputs/conditioning_canny_20240326_123456.npy",
-  "original": "/data/outputs/video.mp4",
+  "conditioning": "data:image/jpeg;base64,/9j/4AAQSkZJRg...",
+  "original": "data:image/jpeg;base64,/9j/4AAQSkZJRg...",
   "conditioning_type": "canny",
   "frame_time": 0.0
 }
 ```
+
+> **注意:** `conditioning` 和 `original` 字段返回的是 base64 编码的 JPEG 图片数据，带有 `data:image/jpeg;base64,` 前缀。
 
 ---
 
@@ -513,7 +517,7 @@ curl -X POST http://localhost:8000/api/ic-lora/generate \
 | `num_inference_steps` | int | 30 | 推理步数 |
 | `cfg_guidance_scale` | float | 1.0 | CFG 引导强度 |
 | `negative_prompt` | string | "" | 负面提示词 |
-| `images` | array | [] | 参考图片 |
+| `images` | array | [] | 参考图片数组，每项包含 `path` (string), `frame` (int, 默认 0), `strength` (float, 默认 1.0) |
 
 **响应示例:**
 ```json
@@ -629,10 +633,10 @@ curl -X POST http://localhost:8000/api/remote/generate \
 | Form 字段 | 说明 |
 |----------|------|
 | `prompt` | 提示词 (必需) |
-| `resolution` | 分辨率 (默认 768p) |
+| `resolution` | 分辨率 (默认 720p): 540p, 720p, 1080p |
 | `model` | 模型 (默认 fast) |
-| `duration` | 时长 (默认 5) |
-| `fps` | 帧率 (默认 24) |
+| `duration` | 时长 (默认 5): 受分辨率限制，见附录 C |
+| `fps` | 帧率 (默认 24): 24, 25, 50 |
 | `aspectRatio` | 宽高比 (默认 16:9) |
 | `cameraMotion` | 相机运动 |
 | `negativePrompt` | 负面提示词 |
@@ -794,7 +798,7 @@ curl -s -X POST $BASE_URL/api/generate \
   -H "Content-Type: application/json" \
   -d '{
     "prompt": "a beautiful sunset over ocean waves",
-    "resolution": "768p",
+    "resolution": "720p",
     "model": "fast",
     "duration": "5"
   }' | jq .
@@ -810,19 +814,50 @@ echo "$BASE_URL/api/remote/videos"
 
 ---
 
-### C. 常用分辨率和时长
+### C. 本地生成分辨率和时长限制
 
-| 分辨率 | 说明 |
-|--------|------|
-| `512p` | 512x512 (1:1), 576x1024 (9:16), 1024x576 (16:9) |
-| `768p` | 768x768 (1:1), 864x1536 (9:16), 1536x864 (16:9) |
+#### 视频生成 (T2V/I2V) 分辨率映射
 
-| 时长 | 说明 |
+| 分辨率标签 | 16:9 (宽x高) | 9:16 (宽x高) | 最大时长 |
+|-----------|-------------|-------------|---------|
+| `540p` | 960x544 | 544x960 | 20 秒 |
+| `720p` | 1280x704 | 704x1280 | 10 秒 |
+| `1080p` | 1920x1088 | 1088x1920 | 5 秒 |
+
+#### 音频生视频 (A2V) 分辨率映射
+
+| 分辨率标签 | 宽x高 |
+|-----------|-------|
+| `540p` | 960x576 |
+| `720p` | 1280x704 |
+| `1080p` | 1920x1088 |
+
+> **注意:** A2V 仅支持 16:9 宽高比。
+
+#### 帧率选项
+
+| 帧率 | 说明 |
 |------|------|
-| `2` | 2 秒短视频 |
-| `5` | 5 秒标准视频 |
-| `10` | 10 秒长视频 |
+| `24` | 电影标准 |
+| `25` | PAL 标准 |
+| `50` | 高帧率 |
+
+#### 图像生成参数
+
+| 参数 | 默认值 | 范围 |
+|------|--------|------|
+| `width` | 1024 | 会被对齐到 16 的倍数 |
+| `height` | 1024 | 会被对齐到 16 的倍数 |
+| `numSteps` | 4 | 推理步数 |
+| `numImages` | 1 | 1-12 |
+
+#### Retake 参数限制
+
+| 参数 | 限制 |
+|------|------|
+| `duration` | 最小 2 秒 |
+| `mode` | replace_audio_and_video, replace_video, replace_audio |
 
 ---
 
-*文档生成时间: 2026-03-26*
+*文档生成时间: 2026-03-31*
