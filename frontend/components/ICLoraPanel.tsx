@@ -8,6 +8,7 @@ import { backendFetch } from '../lib/backend'
 import { logger } from '../lib/logger'
 import { fileUrlToPath, pathToUrl } from '../lib/url-to-path'
 import { isElectron } from '../lib/environment'
+import { api } from '../lib/api'
 
 export type ICLoraConditioningType = 'canny' | 'depth'
 
@@ -300,17 +301,45 @@ export function ICLoraPanel({
   }, [inputVideoUrl, icLoraReady, isCheckingIcLora])
 
   const handleBrowse = useCallback(async () => {
-    if (!isElectron) return
-    const paths = await window.electronAPI.showOpenFileDialog({
-      title: 'Select Driving Video',
-      filters: [{ name: 'Video', extensions: ['mp4', 'mov', 'avi', 'webm', 'mkv'] }],
-    })
-    if (paths && paths.length > 0) {
-      const filePath = paths[0]
-      setInputVideoPath(filePath)
-      setInputVideoUrl(pathToUrl(filePath))
+    if (isElectron) {
+      const paths = await window.electronAPI.showOpenFileDialog({
+        title: 'Select Driving Video',
+        filters: [{ name: 'Video', extensions: ['mp4', 'mov', 'avi', 'webm', 'mkv'] }],
+      })
+      if (paths && paths.length > 0) {
+        const filePath = paths[0]
+        setInputVideoPath(filePath)
+        setInputVideoUrl(pathToUrl(filePath))
+        setConditioningPreview(null)
+        setExtractError(null)
+      }
+    }
+  }, [])
+
+  const handleFileSelect = useCallback(async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0]
+    if (!file) return
+    
+    if (isElectron) {
+      const filePath = (file as unknown as { path?: string }).path
+      if (filePath) {
+        setInputVideoPath(filePath)
+        setInputVideoUrl(pathToUrl(filePath))
+        setConditioningPreview(null)
+        setExtractError(null)
+        return
+      }
+    }
+    
+    try {
+      const previewUrl = URL.createObjectURL(file)
+      const result = await api.uploadVideo(file)
+      setInputVideoPath(result.file_id)
+      setInputVideoUrl(previewUrl)
       setConditioningPreview(null)
       setExtractError(null)
+    } catch (error) {
+      logger.error('Failed to upload video:', error)
     }
   }, [])
 
@@ -322,7 +351,7 @@ export function ICLoraPanel({
     setExtractError(null)
   }, [])
 
-  const handleDrop = useCallback((e: React.DragEvent) => {
+  const handleDrop = useCallback(async (e: React.DragEvent) => {
     e.preventDefault()
     setIsDragOver(false)
 
@@ -345,12 +374,26 @@ export function ICLoraPanel({
 
     const file = e.dataTransfer.files?.[0]
     if (file) {
-      const filePath = (file as unknown as { path?: string }).path
-      if (isElectron && filePath) {
-        setInputVideoPath(filePath)
-        setInputVideoUrl(pathToUrl(filePath))
+      if (isElectron) {
+        const filePath = (file as unknown as { path?: string }).path
+        if (filePath) {
+          setInputVideoPath(filePath)
+          setInputVideoUrl(pathToUrl(filePath))
+          setConditioningPreview(null)
+          setExtractError(null)
+          return
+        }
+      }
+      
+      try {
+        const previewUrl = URL.createObjectURL(file)
+        const result = await api.uploadVideo(file)
+        setInputVideoPath(result.file_id)
+        setInputVideoUrl(previewUrl)
         setConditioningPreview(null)
         setExtractError(null)
+      } catch (error) {
+        logger.error('Failed to upload video:', error)
       }
     }
   }, [])
@@ -382,7 +425,13 @@ export function ICLoraPanel({
               <Trash2 className="h-3.5 w-3.5" />
             </button>
             <button
-              onClick={handleBrowse}
+              onClick={() => {
+                if (isElectron) {
+                  handleBrowse()
+                } else {
+                  document.getElementById('ic-lora-video-input')?.click()
+                }
+              }}
               className="p-1.5 rounded-md hover:bg-zinc-800 text-zinc-400 hover:text-white transition-colors"
               title="Replace video"
             >
@@ -480,7 +529,13 @@ export function ICLoraPanel({
                 </span>
               )}
               <button
-                onClick={handleBrowse}
+                onClick={() => {
+                  if (isElectron) {
+                    handleBrowse()
+                  } else {
+                    document.getElementById('ic-lora-video-input')?.click()
+                  }
+                }}
                 className="flex items-center gap-1 px-2 py-0.5 rounded text-[10px] text-zinc-400 hover:text-white hover:bg-zinc-800 transition-colors shrink-0"
               >
                 <Upload className="h-3 w-3" />
@@ -506,8 +561,21 @@ export function ICLoraPanel({
                     <Film className="h-6 w-6 text-zinc-600" />
                   </div>
                   <p className="text-zinc-400 text-xs">{t('icLora.dropOrImportVideo')}</p>
+                  <input
+                    type="file"
+                    accept="video/mp4,video/mov,video/avi,video/webm,video/mkv,.mp4,.mov,.avi,.webm,.mkv"
+                    onChange={handleFileSelect}
+                    className="hidden"
+                    id="ic-lora-video-input"
+                  />
                   <button
-                    onClick={handleBrowse}
+                    onClick={() => {
+                      if (isElectron) {
+                        handleBrowse()
+                      } else {
+                        document.getElementById('ic-lora-video-input')?.click()
+                      }
+                    }}
                     className="mt-2 px-3 py-1.5 text-[10px] text-blue-400 border border-blue-500/30 rounded-lg hover:bg-blue-600/10 transition-colors"
                   >
                     {t('icLora.importVideo')}

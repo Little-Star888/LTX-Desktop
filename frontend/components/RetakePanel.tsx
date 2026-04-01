@@ -4,6 +4,7 @@ import { useTranslation } from 'react-i18next'
 import { logger } from '../lib/logger'
 import { fileUrlToPath, pathToUrl } from '../lib/url-to-path'
 import { isElectron } from '../lib/environment'
+import { api } from '../lib/api'
 
 interface RetakePanelProps {
   initialVideoUrl?: string | null
@@ -317,17 +318,45 @@ export function RetakePanel({
   }, [draggingHandle, videoDuration])
 
   const handleBrowse = useCallback(async () => {
-    if (!isElectron) return
-    const paths = await window.electronAPI.showOpenFileDialog({
-      title: 'Select Video',
-      filters: [{ name: 'Video', extensions: ['mp4', 'mov', 'avi', 'webm', 'mkv'] }],
-    })
-    if (paths && paths.length > 0) {
-      const filePath = paths[0]
-      setVideoPath(filePath)
-      setVideoUrl(pathToUrl(filePath))
+    if (isElectron) {
+      const paths = await window.electronAPI.showOpenFileDialog({
+        title: 'Select Video',
+        filters: [{ name: 'Video', extensions: ['mp4', 'mov', 'avi', 'webm', 'mkv'] }],
+      })
+      if (paths && paths.length > 0) {
+        const filePath = paths[0]
+        setVideoPath(filePath)
+        setVideoUrl(pathToUrl(filePath))
+        setThumbnails([])
+        extractingRef.current = false
+      }
+    }
+  }, [])
+
+  const handleFileSelect = useCallback(async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0]
+    if (!file) return
+    
+    if (isElectron) {
+      const filePath = (file as any).path as string | undefined
+      if (filePath) {
+        setVideoPath(filePath)
+        setVideoUrl(pathToUrl(filePath))
+        setThumbnails([])
+        extractingRef.current = false
+        return
+      }
+    }
+    
+    try {
+      const previewUrl = URL.createObjectURL(file)
+      const result = await api.uploadVideo(file)
+      setVideoPath(result.file_id)
+      setVideoUrl(previewUrl)
       setThumbnails([])
       extractingRef.current = false
+    } catch (error) {
+      logger.error('Failed to upload video:', error)
     }
   }, [])
 
@@ -344,7 +373,7 @@ export function RetakePanel({
     initialSelectionAppliedRef.current = false
   }, [])
 
-  const handleDrop = useCallback((e: React.DragEvent) => {
+  const handleDrop = useCallback(async (e: React.DragEvent) => {
     e.preventDefault()
     setIsDragOver(false)
 
@@ -367,12 +396,26 @@ export function RetakePanel({
 
     const file = e.dataTransfer.files?.[0]
     if (file) {
-      const filePath = (file as any).path as string | undefined
-      if (isElectron && filePath) {
-        setVideoPath(filePath)
-        setVideoUrl(pathToUrl(filePath))
+      if (isElectron) {
+        const filePath = (file as any).path as string | undefined
+        if (filePath) {
+          setVideoPath(filePath)
+          setVideoUrl(pathToUrl(filePath))
+          setThumbnails([])
+          extractingRef.current = false
+          return
+        }
+      }
+      
+      try {
+        const previewUrl = URL.createObjectURL(file)
+        const result = await api.uploadVideo(file)
+        setVideoPath(result.file_id)
+        setVideoUrl(previewUrl)
         setThumbnails([])
         extractingRef.current = false
+      } catch (error) {
+        logger.error('Failed to upload video:', error)
       }
     }
   }, [])
@@ -404,7 +447,13 @@ export function RetakePanel({
               <Trash2 className="h-3.5 w-3.5" />
             </button>
             <button
-              onClick={handleBrowse}
+              onClick={() => {
+                if (isElectron) {
+                  handleBrowse()
+                } else {
+                  document.getElementById('retake-video-input')?.click()
+                }
+              }}
               className="p-1.5 rounded-md hover:bg-zinc-800 text-zinc-400 hover:text-white transition-colors"
               title={t('retake.replaceVideo')}
             >
@@ -430,8 +479,21 @@ export function RetakePanel({
             <p className="text-sm text-white">{t('retake.dropVideo')}</p>
             <p className="text-xs text-zinc-500">{t('retake.dropVideoHint')}</p>
           </div>
+          <input
+            type="file"
+            accept="video/mp4,video/mov,video/avi,video/webm,video/mkv,.mp4,.mov,.avi,.webm,.mkv"
+            onChange={handleFileSelect}
+            className="hidden"
+            id="retake-video-input"
+          />
           <button
-            onClick={handleBrowse}
+            onClick={() => {
+              if (isElectron) {
+                handleBrowse()
+              } else {
+                document.getElementById('retake-video-input')?.click()
+              }
+            }}
             className="px-4 py-1.5 text-xs font-medium rounded-md bg-white text-black hover:bg-zinc-200 transition-colors"
           >
             {t('retake.browse')}

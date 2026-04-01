@@ -104,6 +104,27 @@ async def upload_audio(
     return {"file_id": str(dest), "filename": safe_name, "size": len(content)}
 
 
+@router.post("/upload-video")
+async def upload_video(
+    file: UploadFile = File(...),
+    handler: AppHandler = Depends(get_state_service),
+):
+    """Upload a video file.  Returns a ``file_id`` (absolute path) to pass
+    as video path in retake or IC-LoRA endpoints."""
+    _validate_filename(file.filename or "")
+    uploads_dir = _get_uploads_dir(handler)
+
+    content = await file.read()
+    if len(content) > 500 * 1024 * 1024:
+        raise HTTPException(400, "Video too large (max 500 MB)")
+
+    safe_name = _safe_filename(file.filename or "video.mp4")
+    dest = uploads_dir / safe_name
+    dest.write_bytes(content)
+
+    return {"file_id": str(dest), "filename": safe_name, "size": len(content)}
+
+
 # ──────────────────────────────────────────────
 # All-in-one generate endpoint (multipart)
 # ──────────────────────────────────────────────

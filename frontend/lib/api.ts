@@ -138,6 +138,22 @@ export const api = {
     return response.json()
   },
 
+  async uploadVideo(file: File): Promise<{ file_id: string; filename: string; size: number }> {
+    const formData = new FormData()
+    formData.append('file', file)
+    
+    const response = await apiFetch('/api/remote/upload-video', {
+      method: 'POST',
+      body: formData,
+    })
+    
+    if (!response.ok) {
+      throw new Error(`Upload failed: ${response.status}`)
+    }
+    
+    return response.json()
+  },
+
   async listVideos() {
     return apiFetchJson('/api/remote/videos')
   },
