@@ -548,6 +548,13 @@ export function ICLoraPanel({
               onDragLeave={() => setIsDragOver(false)}
               onDrop={handleDrop}
             >
+              <input
+                type="file"
+                accept="video/mp4,video/mov,video/avi,video/webm,video/mkv,.mp4,.mov,.avi,.webm,.mkv"
+                onChange={handleFileSelect}
+                className="hidden"
+                id="ic-lora-video-input"
+              />
               {inputVideoUrl ? (
                 <video
                   ref={inputVideoRef}
@@ -561,13 +568,6 @@ export function ICLoraPanel({
                     <Film className="h-6 w-6 text-zinc-600" />
                   </div>
                   <p className="text-zinc-400 text-xs">{t('icLora.dropOrImportVideo')}</p>
-                  <input
-                    type="file"
-                    accept="video/mp4,video/mov,video/avi,video/webm,video/mkv,.mp4,.mov,.avi,.webm,.mkv"
-                    onChange={handleFileSelect}
-                    className="hidden"
-                    id="ic-lora-video-input"
-                  />
                   <button
                     onClick={() => {
                       if (isElectron) {

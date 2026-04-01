@@ -341,34 +341,56 @@ export function useGeneration(): UseGenerationReturn {
     })
 
     abortControllerRef.current = new AbortController()
+    let progressInterval: ReturnType<typeof setInterval> | null = null
+    let shouldApplyPollingUpdates = true
+    let lastPhase = ''
+    let inferenceStartTime = 0
+    const estimatedInferenceTime = numImages * 8
 
     try {
-      // Skip prompt enhancement for T2I - use original prompt directly
       const finalPrompt = prompt
 
       const dims = getImageDimensions(settings)
       const numSteps = settings.imageSteps || 4
 
-      // Poll for progress
       const pollProgress = async () => {
+        if (!shouldApplyPollingUpdates) return
         try {
           const res = await backendFetch('/api/generation/progress')
           if (res.ok) {
-            const data = await res.json()
+            const data: GenerationProgress = await res.json()
+            if (!shouldApplyPollingUpdates) return
+
+            let displayProgress = data.progress
             const currentImage = data.currentStep || 0
             const totalImages = data.totalSteps || numImages
+            let statusMessage = numImages > 1 
+              ? `Generating image ${currentImage + 1}/${totalImages}...`
+              : 'Generating image...'
+
+            if (data.phase === 'loading_model') {
+              statusMessage = 'Loading Z-Image turbo model...'
+            } else if (data.phase === 'inference') {
+              if (lastPhase !== 'inference') {
+                inferenceStartTime = Date.now()
+              }
+              const elapsed = (Date.now() - inferenceStartTime) / 1000
+              const inferenceProgress = Math.min(elapsed / estimatedInferenceTime, 0.95)
+              displayProgress = 15 + Math.floor(inferenceProgress * 80)
+              statusMessage = numImages > 1 
+                ? `Generating image ${currentImage + 1}/${totalImages}...`
+                : 'Generating image...'
+            } else if (data.phase === 'complete') {
+              displayProgress = 95
+              statusMessage = 'Finalizing...'
+            }
+
+            lastPhase = data.phase
+
             setState(prev => ({
               ...prev,
-              progress: data.progress,
-              statusMessage: data.phase === 'loading_model' 
-                ? 'Loading Z-Image Turbo model...' 
-                : data.phase === 'inference'
-                  ? numImages > 1 
-                    ? `Generating image ${currentImage + 1}/${totalImages}...`
-                    : 'Generating image...'
-                  : data.phase === 'complete'
-                    ? 'Complete!'
-                    : 'Generating...',
+              progress: displayProgress,
+              statusMessage,
             }))
           }
         } catch {
@@ -376,7 +398,7 @@ export function useGeneration(): UseGenerationReturn {
         }
       }
       
-      const progressInterval = setInterval(pollProgress, 500)
+      progressInterval = setInterval(pollProgress, 500)
 
       const response = await backendFetch('/api/generate-image', {
         method: 'POST',
@@ -391,7 +413,10 @@ export function useGeneration(): UseGenerationReturn {
         signal: abortControllerRef.current.signal,
       })
 
-      clearInterval(progressInterval)
+      shouldApplyPollingUpdates = false
+      if (progressInterval) {
+        clearInterval(progressInterval)
+      }
 
       if (!response.ok) {
         const errorText = await response.text()
@@ -401,7 +426,6 @@ export function useGeneration(): UseGenerationReturn {
       const result = await response.json()
       
       if (result.status === 'complete') {
-        // Handle both new format (image_paths array) and old format (single image_path)
         let rawPaths: string[] = []
         if (result.image_paths && Array.isArray(result.image_paths)) {
           rawPaths = result.image_paths
@@ -410,7 +434,6 @@ export function useGeneration(): UseGenerationReturn {
         }
         
         if (rawPaths.length > 0) {
-          // Convert all paths to URLs (file:// in Electron, /outputs in web)
           const urls = rawPaths.map((path: string) => pathToUrl(path))
           
           setState({
@@ -419,10 +442,10 @@ export function useGeneration(): UseGenerationReturn {
             statusMessage: 'Complete!',
             videoUrl: null,
             videoPath: null,
-            imageUrl: urls[0],  // First image for backwards compatibility
-            imagePath: rawPaths[0],  // First image path
-            imageUrls: urls,    // All images
-            imagePaths: rawPaths,   // All image paths
+            imageUrl: urls[0],
+            imagePath: rawPaths[0],
+            imageUrls: urls,
+            imagePaths: rawPaths,
             error: null,
           })
         }
@@ -449,6 +472,11 @@ export function useGeneration(): UseGenerationReturn {
           isGenerating: false,
           error: error instanceof Error ? error.message : 'Unknown error',
         }))
+      }
+    } finally {
+      shouldApplyPollingUpdates = false
+      if (progressInterval) {
+        clearInterval(progressInterval)
       }
     }
   }, [appSettings.hasFalApiKey, forceApiGenerations, refreshSettings])

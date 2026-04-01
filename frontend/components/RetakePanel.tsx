@@ -427,6 +427,13 @@ export function RetakePanel({
 
   return (
     <div className={`bg-zinc-900 border border-zinc-800 rounded-2xl overflow-hidden flex flex-col ${fillHeight ? 'h-full min-h-0' : ''}`}>
+      <input
+        type="file"
+        accept="video/mp4,video/mov,video/avi,video/webm,video/mkv,.mp4,.mov,.avi,.webm,.mkv"
+        onChange={handleFileSelect}
+        className="hidden"
+        id="retake-video-input"
+      />
       <div className="flex items-center justify-between px-4 py-3 border-b border-zinc-800 flex-shrink-0">
         <div className="flex items-center gap-2">
           <Film className="h-4 w-4 text-blue-400" />
@@ -479,13 +486,6 @@ export function RetakePanel({
             <p className="text-sm text-white">{t('retake.dropVideo')}</p>
             <p className="text-xs text-zinc-500">{t('retake.dropVideoHint')}</p>
           </div>
-          <input
-            type="file"
-            accept="video/mp4,video/mov,video/avi,video/webm,video/mkv,.mp4,.mov,.avi,.webm,.mkv"
-            onChange={handleFileSelect}
-            className="hidden"
-            id="retake-video-input"
-          />
           <button
             onClick={() => {
               if (isElectron) {

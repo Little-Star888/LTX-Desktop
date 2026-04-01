@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from collections.abc import Sequence
 from dataclasses import dataclass
-from typing import Any, cast
+from typing import Any, Callable, cast
 
 import torch
 from diffusers.pipelines.auto_pipeline import ZImagePipeline  # type: ignore[reportUnknownVariableType]
@@ -69,9 +69,10 @@ class ZitImageGenerationPipeline:
         guidance_scale: float,
         num_inference_steps: int,
         seed: int,
+        callback: Callable[[int, int], None] | None = None,
     ) -> ImagePipelineOutputLike:
-        # ZImagePipeline ignores guidance_scale, so we drop it explicitly.
         _ = guidance_scale
+        _ = callback
         generator = torch.Generator(device=self._resolve_generator_device()).manual_seed(seed)
         pipeline = cast(Any, self.pipeline)
         output = pipeline(

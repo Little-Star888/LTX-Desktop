@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from typing import Protocol
+from typing import Callable, Protocol
 
 from services.services_utils import ImagePipelineOutputLike
 
@@ -23,6 +23,7 @@ class ImageGenerationPipeline(Protocol):
         guidance_scale: float,
         num_inference_steps: int,
         seed: int,
+        callback: Callable[[int, int], None] | None = None,
     ) -> ImagePipelineOutputLike:
         ...
 

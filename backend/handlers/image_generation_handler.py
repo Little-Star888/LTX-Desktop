@@ -97,9 +97,9 @@ class ImageGenerationHandler(StateHandlerBase):
         if self._generation.is_generation_cancelled():
             raise RuntimeError("Generation was cancelled")
 
-        self._generation.update_progress("loading_model", 5, 0, num_inference_steps)
+        self._generation.update_progress("loading_model", 5, 0, num_images)
         zit = self._pipelines.load_zit_to_gpu()
-        self._generation.update_progress("inference", 15, 0, num_inference_steps)
+        self._generation.update_progress("inference", 15, 0, num_images)
 
         if seed is None:
             seed = int(time.time()) % 2147483647
@@ -110,9 +110,6 @@ class ImageGenerationHandler(StateHandlerBase):
         for i in range(num_images):
             if self._generation.is_generation_cancelled():
                 raise RuntimeError("Generation was cancelled")
-
-            progress = 15 + int((i / num_images) * 80)
-            self._generation.update_progress("inference", progress, i, num_images)
 
             result = zit.generate(
                 prompt=prompt,

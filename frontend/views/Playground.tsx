@@ -95,6 +95,7 @@ export function Playground() {
     resetRetake,
     isRetaking,
     retakeStatus,
+    retakeProgress,
     retakeError,
     retakeResult,
   } = useRetake()
@@ -104,6 +105,7 @@ export function Playground() {
     resetIcLora,
     isIcLoraGenerating,
     icLoraStatus,
+    icLoraProgress,
     icLoraError,
     icLoraResult,
   } = useIcLora()
@@ -460,7 +462,7 @@ export function Playground() {
               videoPath={retakeResult?.videoPath || null}
               videoResolution={settings.videoResolution}
               isGenerating={isRetaking}
-              progress={0}
+              progress={retakeProgress}
               statusMessage={retakeStatus}
             />
           ) : mode === 'ic-lora' ? (
@@ -469,7 +471,7 @@ export function Playground() {
               videoPath={icLoraResult?.videoPath || null}
               videoResolution={settings.videoResolution}
               isGenerating={isIcLoraGenerating}
-              progress={0}
+              progress={icLoraProgress}
               statusMessage={icLoraStatus}
             />
           ) : (
