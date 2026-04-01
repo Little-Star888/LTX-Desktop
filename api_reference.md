@@ -580,6 +580,8 @@ curl -X POST http://localhost:8000/api/remote/upload-image \
   -F "file=@/path/to/image.png"
 ```
 
+> **限制:** 图片文件最大 50 MB
+
 **响应示例:**
 ```json
 {
@@ -597,6 +599,8 @@ curl -X POST http://localhost:8000/api/remote/upload-image \
 curl -X POST http://localhost:8000/api/remote/upload-audio \
   -F "file=@/path/to/audio.wav"
 ```
+
+> **限制:** 音频文件最大 100 MB
 
 **响应示例:**
 ```json
@@ -633,7 +637,7 @@ curl -X POST http://localhost:8000/api/remote/generate \
 | Form 字段 | 说明 |
 |----------|------|
 | `prompt` | 提示词 (必需) |
-| `resolution` | 分辨率 (默认 720p): 540p, 720p, 1080p |
+| `resolution` | 分辨率 (默认 768p，不支持时回退到 540p): 540p, 720p, 1080p |
 | `model` | 模型 (默认 fast) |
 | `duration` | 时长 (默认 5): 受分辨率限制，见附录 C |
 | `fps` | 帧率 (默认 24): 24, 25, 50 |
