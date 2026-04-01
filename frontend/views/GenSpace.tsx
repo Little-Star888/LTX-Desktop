@@ -669,7 +669,7 @@ function PromptBar({
         ) : isIcLora ? (
           <>
             <SettingsDropdown
-              title={t('icLora.conditioningType').toUpperCase()}
+              title={t('icLora.conditioningType')}
               value={icLoraCondType || 'canny'}
               onChange={(v) => onIcLoraCondTypeChange?.(v as ICLoraConditioningType)}
               options={CONDITIONING_TYPES.map(ct => ({ value: ct.value, label: t(ct.labelKey) }))}
@@ -682,7 +682,7 @@ function PromptBar({
             />
             <div className="w-px h-4 bg-zinc-700 mx-0.5" />
             <SettingsDropdown
-              title={t('icLora.strength').toUpperCase()}
+              title={t('icLora.strength')}
               value={String(icLoraStrength ?? 1.0)}
               onChange={(v) => onIcLoraStrengthChange?.(parseFloat(v))}
               options={[

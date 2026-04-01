@@ -314,20 +314,20 @@ export function Playground() {
                 {/* Conditioning controls */}
                 <div className="space-y-3 p-4 bg-zinc-900 border border-zinc-800 rounded-2xl">
                   <div className="flex items-center justify-between">
-                    <label className="text-xs font-medium text-zinc-400">Conditioning Type</label>
+                    <label className="text-xs font-medium text-zinc-400">{t('icLora.conditioningType')}</label>
                     <select
                       value={icLoraCondType}
                       onChange={(e) => setIcLoraCondType(e.target.value as ICLoraConditioningType)}
                       className="bg-zinc-800 border border-zinc-700 rounded-md px-2 py-1 text-xs text-white focus:outline-none focus:border-blue-500"
                     >
                       {CONDITIONING_TYPES.map(ct => (
-                        <option key={ct.value} value={ct.value}>{ct.label}</option>
+                        <option key={ct.value} value={ct.value}>{t(ct.labelKey)}</option>
                       ))}
                     </select>
                   </div>
                   <div className="space-y-1">
                     <div className="flex items-center justify-between">
-                      <label className="text-xs font-medium text-zinc-400">Strength</label>
+                      <label className="text-xs font-medium text-zinc-400">{t('icLora.strength')}</label>
                       <span className="text-xs text-zinc-400">{icLoraStrength.toFixed(2)}</span>
                     </div>
                     <input

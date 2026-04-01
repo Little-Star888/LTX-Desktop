@@ -24,6 +24,8 @@ i18n
       order: ['localStorage', 'navigator'],
       caches: ['localStorage'],
     },
+    supportedLngs: ['en', 'zh', 'zh-CN', 'zh-TW', 'zh-HK'],
+    load: 'languageOnly',
   })
 
 export default i18n
