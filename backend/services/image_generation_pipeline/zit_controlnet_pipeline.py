@@ -195,6 +195,7 @@ class ZitControlNetPipeline:
                 image=resized_image,
                 mask_image=resized_mask,
                 control_image=control_image.resize((width, height)),
+                strength=strength,
                 width=width,
                 height=height,
                 num_inference_steps=num_inference_steps,
