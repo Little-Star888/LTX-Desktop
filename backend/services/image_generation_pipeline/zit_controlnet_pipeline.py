@@ -22,16 +22,26 @@ ImageToImageMode = Literal["img2img", "inpaint", "canny", "depth", "pose"]
 
 
 class ZitControlNetPipeline:
+    _depth_estimator = None
+    _depth_processor = None
+    _pose_detector = None
+
     @staticmethod
     def create(
         model_path: str,
         controlnet_path: str,
         device: str | None = None,
+        depth_model_path: str | None = None,
+        pose_model_path: str | None = None,
+        person_detector_model_path: str | None = None,
     ) -> "ZitControlNetPipeline":
         return ZitControlNetPipeline(
             model_path=model_path,
             controlnet_path=controlnet_path,
             device=device,
+            depth_model_path=depth_model_path,
+            pose_model_path=pose_model_path,
+            person_detector_model_path=person_detector_model_path,
         )
 
     def __init__(
@@ -39,11 +49,17 @@ class ZitControlNetPipeline:
         model_path: str,
         controlnet_path: str,
         device: str | None = None,
+        depth_model_path: str | None = None,
+        pose_model_path: str | None = None,
+        person_detector_model_path: str | None = None,
     ) -> None:
         self._device: str | None = None
         self._cpu_offload_active = False
         self._model_path = model_path
         self._controlnet_path = controlnet_path
+        self._depth_model_path = depth_model_path
+        self._pose_model_path = pose_model_path
+        self._person_detector_model_path = person_detector_model_path
 
         from diffusers import ZImageControlNetModel
 
@@ -139,10 +155,49 @@ class ZitControlNetPipeline:
 
         return _ZImageControlNetOutput(images=validated_images)
 
+    def _get_depth_estimator(self):
+        if ZitControlNetPipeline._depth_estimator is None or ZitControlNetPipeline._depth_processor is None:
+            from transformers import DPTForDepthEstimation, DPTImageProcessor
+            
+            if self._depth_model_path:
+                model_path = self._depth_model_path
+            else:
+                model_path = "Intel/dpt-hybrid-midas"
+            
+            device = self._resolve_generator_device()
+            dtype = torch.float16 if device == "cuda" else torch.float32
+            
+            ZitControlNetPipeline._depth_estimator = DPTForDepthEstimation.from_pretrained(
+                model_path,
+                torch_dtype=dtype,
+                device_map=device,
+            )
+            ZitControlNetPipeline._depth_processor = DPTImageProcessor.from_pretrained(model_path)
+        return ZitControlNetPipeline._depth_estimator, ZitControlNetPipeline._depth_processor
+
+    def _get_pose_detector(self):
+        if ZitControlNetPipeline._pose_detector is None:
+            if self._pose_model_path and self._person_detector_model_path:
+                from services.pose_processor_pipeline.dw_pose_pipeline import DWPosePipeline
+                device = torch.device(self._resolve_generator_device())
+                ZitControlNetPipeline._pose_detector = DWPosePipeline.create(
+                    pose_model_path=self._pose_model_path,
+                    person_detector_model_path=self._person_detector_model_path,
+                    device=device,
+                )
+            else:
+                raise RuntimeError(
+                    "Pose processor models not downloaded. "
+                    "Please download 'pose_processor' and 'person_detector' models from Model Status menu."
+                )
+        return ZitControlNetPipeline._pose_detector
+
     def _prepare_control_image(
         self,
         image: PILImageType,
         mode: ImageToImageMode,
+        target_width: int,
+        target_height: int,
     ) -> PILImageType:
         if mode == "canny":
             import cv2
@@ -152,15 +207,66 @@ class ZitControlNetPipeline:
             canny_image = cv2.Canny(np_image, 100, 200)
             canny_image = canny_image[:, :, None]
             canny_image = np.concatenate([canny_image, canny_image, canny_image], axis=2)
-            return PILImageModule.fromarray(canny_image)
+            return PILImageModule.fromarray(canny_image).resize((target_width, target_height))
 
         if mode == "depth":
-            return image.convert("RGB")
+            import cv2
+            import numpy as np
+
+            depth_estimator, depth_processor = self._get_depth_estimator()
+            device = self._resolve_generator_device()
+            dtype = torch.float16 if device == "cuda" else torch.float32
+            
+            inputs = depth_processor(images=image.convert("RGB"), return_tensors="pt")
+            inputs = {k: v.to(device=device, dtype=dtype) for k, v in inputs.items()}
+            
+            with torch.no_grad():
+                predicted_depth = depth_estimator(**inputs).predicted_depth
+            
+            depth = torch.nn.functional.interpolate(
+                predicted_depth.unsqueeze(1),
+                size=(target_height, target_width),
+                mode="bicubic",
+                align_corners=False,
+            )[0, 0]
+            
+            depth_np = depth.detach().float().cpu().numpy()
+            min_depth = float(depth_np.min())
+            max_depth = float(depth_np.max())
+            if max_depth - min_depth <= 1e-6:
+                depth_uint8 = np.zeros((target_height, target_width), dtype=np.uint8)
+            else:
+                normalized = (depth_np - min_depth) / (max_depth - min_depth)
+                depth_uint8 = np.clip(normalized * 255.0, 0.0, 255.0).astype(np.uint8)
+            
+            colored = cv2.applyColorMap(depth_uint8, cv2.COLORMAP_INFERNO)
+            return PILImageModule.fromarray(cv2.cvtColor(colored, cv2.COLOR_BGR2RGB))
 
         if mode == "pose":
-            return image.convert("RGB")
+            import cv2
+            import numpy as np
 
-        return image.convert("RGB")
+            pose_detector = self._get_pose_detector()
+            
+            np_image = np.array(image.convert("RGB"))
+            np_image_bgr = cv2.cvtColor(np_image, cv2.COLOR_RGB2BGR)
+            
+            if hasattr(pose_detector, 'apply'):
+                pose_result = pose_detector.apply(np_image_bgr)
+            else:
+                pose_result = pose_detector(image)
+            
+            if isinstance(pose_result, np.ndarray):
+                if pose_result.shape[2] == 3:
+                    pose_rgb = cv2.cvtColor(pose_result, cv2.COLOR_BGR2RGB)
+                else:
+                    pose_rgb = pose_result
+            else:
+                pose_rgb = np.array(pose_result.convert("RGB"))
+            
+            return PILImageModule.fromarray(pose_rgb).resize((target_width, target_height))
+
+        return image.convert("RGB").resize((target_width, target_height))
 
     @torch.inference_mode()
     def generate_img2img(
@@ -173,6 +279,7 @@ class ZitControlNetPipeline:
         num_inference_steps: int = 20,
         guidance_scale: float = 7.0,
         controlnet_conditioning_scale: float = 0.8,
+        negative_prompt: str = "",
         seed: int = 0,
     ) -> ImagePipelineOutputLike:
         self._ensure_pipeline_loaded(mode)
@@ -195,13 +302,14 @@ class ZitControlNetPipeline:
                 height=height,
                 num_inference_steps=num_inference_steps,
                 guidance_scale=guidance_scale,
+                negative_prompt=negative_prompt if negative_prompt else None,
                 generator=generator,
                 output_type="pil",
                 return_dict=True,
             )
         elif mode == "inpaint":
             pipeline = cast(Any, self._inpaint_pipeline)
-            control_image = self._prepare_control_image(image, mode)
+            control_image = self._prepare_control_image(image, mode, width, height)
 
             if mask_image is not None:
                 resized_mask = mask_image.convert("L").resize((width, height))
@@ -212,27 +320,29 @@ class ZitControlNetPipeline:
                 prompt=prompt,
                 image=resized_image,
                 mask_image=resized_mask,
-                control_image=control_image.resize((width, height)),
+                control_image=control_image,
                 width=width,
                 height=height,
                 num_inference_steps=num_inference_steps,
                 guidance_scale=guidance_scale,
                 controlnet_conditioning_scale=controlnet_conditioning_scale,
+                negative_prompt=negative_prompt if negative_prompt else None,
                 generator=generator,
                 output_type="pil",
                 return_dict=True,
             )
         else:
             pipeline = cast(Any, self._controlnet_pipeline)
-            control_image = self._prepare_control_image(image, mode)
+            control_image = self._prepare_control_image(image, mode, width, height)
             output = pipeline(
                 prompt=prompt,
-                control_image=control_image.resize((width, height)),
+                control_image=control_image,
                 width=width,
                 height=height,
                 num_inference_steps=num_inference_steps,
                 guidance_scale=guidance_scale,
                 controlnet_conditioning_scale=controlnet_conditioning_scale,
+                negative_prompt=negative_prompt if negative_prompt else None,
                 generator=generator,
                 output_type="pil",
                 return_dict=True,

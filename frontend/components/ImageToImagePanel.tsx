@@ -31,6 +31,8 @@ interface ImageToImagePanelProps {
   onModeChange?: (mode: ImageToImageMode) => void
   strength?: number
   onStrengthChange?: (strength: number) => void
+  negativePrompt?: string
+  onNegativePromptChange?: (prompt: string) => void
   guidanceScale?: number
   onGuidanceScaleChange?: (scale: number) => void
   controlnetScale?: number
@@ -62,6 +64,8 @@ export function ImageToImagePanel({
   onModeChange,
   strength: strengthProp,
   onStrengthChange,
+  negativePrompt: negativePromptProp,
+  onNegativePromptChange,
   guidanceScale: guidanceScaleProp,
   onGuidanceScaleChange,
   controlnetScale: controlnetScaleProp,
@@ -82,12 +86,14 @@ export function ImageToImagePanel({
 
   const [localMode, setLocalMode] = useState<ImageToImageMode>('img2img')
   const [localStrength, setLocalStrength] = useState(0.8)
+  const [localNegativePrompt, setLocalNegativePrompt] = useState('')
   const [localGuidanceScale, setLocalGuidanceScale] = useState(7.0)
   const [localControlnetScale, setLocalControlnetScale] = useState(0.8)
   const [localNumInferenceSteps, setLocalNumInferenceSteps] = useState(20)
 
   const mode = modeProp ?? localMode
   const strength = strengthProp ?? localStrength
+  const negativePrompt = negativePromptProp ?? localNegativePrompt
   const guidanceScale = guidanceScaleProp ?? localGuidanceScale
   const controlnetScale = controlnetScaleProp ?? localControlnetScale
   const numInferenceSteps = numInferenceStepsProp ?? localNumInferenceSteps
@@ -127,6 +133,14 @@ export function ImageToImagePanel({
       setLocalStrength(newStrength)
     }
   }, [onStrengthChange])
+
+  const handleNegativePromptChange = useCallback((newPrompt: string) => {
+    if (onNegativePromptChange) {
+      onNegativePromptChange(newPrompt)
+    } else {
+      setLocalNegativePrompt(newPrompt)
+    }
+  }, [onNegativePromptChange])
 
   const handleGuidanceScaleChange = useCallback((newScale: number) => {
     if (onGuidanceScaleChange) {
@@ -502,6 +516,19 @@ export function ImageToImagePanel({
 
               {showAdvanced && (
                 <div className="space-y-3 pl-2 border-l-2 border-zinc-700">
+                  <div>
+                    <label className="text-xs font-medium text-zinc-400 mb-1.5 block">
+                      {t('img2img.negativePrompt')}
+                    </label>
+                    <input
+                      type="text"
+                      value={negativePrompt}
+                      onChange={(e) => handleNegativePromptChange(e.target.value)}
+                      placeholder={t('img2img.negativePromptPlaceholder')}
+                      className="w-full px-3 py-2 text-xs bg-zinc-800 border border-zinc-700 rounded-lg text-white placeholder-zinc-500 focus:outline-none focus:border-purple-500"
+                    />
+                  </div>
+
                   <div>
                     <label className="text-xs font-medium text-zinc-400 mb-1.5 block">
                       {t('img2img.guidanceScale')}: {guidanceScale.toFixed(1)}

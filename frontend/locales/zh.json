@@ -557,6 +557,8 @@
     "controlnetScale": "ControlNet 强度",
     "controlnetScaleHint": "值越大越遵循原图结构",
     "inferenceSteps": "推理步数",
+    "negativePrompt": "反向提示词",
+    "negativePromptPlaceholder": "丑陋, 文字, 水印, 错误的人体结构, 模糊",
     "advancedSettings": "高级设置",
     "generate": "生成",
     "generating": "生成中...",

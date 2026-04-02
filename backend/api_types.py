@@ -315,6 +315,7 @@ class ImageToImageRequest(BaseModel):
     num_inference_steps: int = 20
     guidance_scale: float = 7.0
     controlnet_conditioning_scale: float = 0.8
+    negative_prompt: str = ""
     seed: int | None = None
     num_images: int = 1
 

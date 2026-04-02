@@ -412,6 +412,18 @@ curl -X POST http://localhost:8000/api/generate-image \
 
 使用 ControlNet 从图片生成新图片，支持多种模式。
 
+**前置条件 - 需要下载的模型:**
+
+| 模型 | 模式 | 大小 | 说明 |
+|------|------|------|------|
+| `zit` | 所有模式 | ~31GB | Z-Image-Turbo 基础模型 |
+| `zit_controlnet` | inpaint/canny/depth/pose | ~3.5GB | ControlNet Union 模型 |
+| `depth_processor` | depth | ~500MB | DPT-Hybrid MiDaS 深度估计模型 |
+| `pose_processor` | pose | ~135MB | DWPose 姿态检测模型 |
+| `person_detector` | pose | ~218MB | YOLOX 人体检测模型 |
+
+> **注意:** 模型可在应用的 "Model Status" 菜单中下载。使用 depth 或 pose 模式前，请确保已下载对应的预处理模型。
+
 **模式说明:**
 
 | 模式 | 使用的管道 | 关键参数 | 说明 |
@@ -444,7 +456,7 @@ curl -X POST http://localhost:8000/api/image-to-image \
   -H "Content-Type: application/json" \
   -d '{
     "prompt": "add sunset lighting, warm colors, golden hour",
-    "image_path": "/data/uploads/landscape.png",
+    "image_path": "/data/uploads/666.png",
     "mode": "img2img",
     "strength": 0.3,
     "num_inference_steps": 20,
@@ -459,7 +471,7 @@ curl -X POST http://localhost:8000/api/image-to-image \
   -H "Content-Type: application/json" \
   -d '{
     "prompt": "a cat sitting on the chair",
-    "image_path": "/data/uploads/room.png",
+    "image_path": "/data/uploads/666.png",
     "mask_path": "/data/uploads/room_mask.png",
     "mode": "inpaint",
     "num_inference_steps": 20,
@@ -477,7 +489,7 @@ curl -X POST http://localhost:8000/api/image-to-image \
   -H "Content-Type: application/json" \
   -d '{
     "prompt": "a futuristic cyberpunk cityscape at night, neon lights, rain",
-    "image_path": "/data/uploads/city.png",
+    "image_path": "/data/uploads/666.png",
     "mode": "canny",
     "num_inference_steps": 20,
     "guidance_scale": 7.0,
@@ -492,7 +504,7 @@ curl -X POST http://localhost:8000/api/image-to-image \
   -H "Content-Type: application/json" \
   -d '{
     "prompt": "pencil sketch, hand drawn, artistic lines, black and white",
-    "image_path": "/data/uploads/portrait.png",
+    "image_path": "/data/uploads/666.png",
     "mode": "canny",
     "num_inference_steps": 25,
     "guidance_scale": 8.0,
@@ -507,7 +519,7 @@ curl -X POST http://localhost:8000/api/image-to-image \
   -H "Content-Type: application/json" \
   -d '{
     "prompt": "a mystical forest with glowing mushrooms, fantasy art style",
-    "image_path": "/data/uploads/forest.png",
+    "image_path": "/data/uploads/666.png",
     "mode": "depth",
     "num_inference_steps": 20,
     "guidance_scale": 7.0,
@@ -592,6 +604,22 @@ curl -X POST http://localhost:8000/api/image-to-image \
   }'
 ```
 
+#### 示例 12: 使用反向提示词避免不想要的元素
+
+```bash
+curl -X POST http://localhost:8000/api/image-to-image \
+  -H "Content-Type: application/json" \
+  -d '{
+    "prompt": "a beautiful woman portrait, professional photography",
+    "image_path": "/data/uploads/zit-image-1775106421491.png",
+    "mode": "img2img",
+    "strength": 0.5,
+    "num_inference_steps": 25,
+    "guidance_scale": 7.5,
+    "negative_prompt": "ugly, deformed, bad anatomy, extra fingers, watermark, text, blurry"
+  }'
+```
+
 **请求参数:**
 
 | 参数 | 类型 | 默认值 | 说明 |
@@ -604,6 +632,7 @@ curl -X POST http://localhost:8000/api/image-to-image \
 | `num_inference_steps` | int | 20 | 推理步数 |
 | `guidance_scale` | float | 7.0 | CFG 引导强度 |
 | `controlnet_conditioning_scale` | float | 0.8 | ControlNet 条件强度 (**inpaint/canny/depth/pose 模式有效**) |
+| `negative_prompt` | string | "" | 反向提示词，用于排除不想要的元素 |
 | `seed` | int | null | 随机种子 (null 则自动生成) |
 | `num_images` | int | 1 | 生成图片数量 |
 
@@ -622,6 +651,14 @@ curl -X POST http://localhost:8000/api/image-to-image \
 - 0.3-0.6: 更自由发挥，变化较大
 - 0.7-0.9: 平衡原图结构和创意
 - 1.0-1.5: 严格遵循原图结构
+
+**`negative_prompt` (所有模式):**
+- 反向提示词，用于排除不想要的元素
+- 示例: "ugly, text, watermark, bad anatomy, blurry"
+- 建议在以下场景使用:
+  - inpaint 模式: 避免生成奇怪的手指、水印等
+  - img2img 模式: 避免生成文字、变形等
+  - canny/depth/pose 模式: 控制生成质量
 
 **`mask_path` (仅 inpaint 模式):**
 - 黑白蒙版图片，白色区域为需要重绘的部分

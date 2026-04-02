@@ -557,6 +557,8 @@
     "controlnetScale": "ControlNet Scale",
     "controlnetScaleHint": "Higher = more faithful to original structure",
     "inferenceSteps": "Inference Steps",
+    "negativePrompt": "Negative Prompt",
+    "negativePromptPlaceholder": "ugly, text, watermark, bad anatomy, blurry",
     "advancedSettings": "Advanced Settings",
     "generate": "Generate",
     "generating": "Generating...",

@@ -125,10 +125,18 @@ class ImageGenerationHandler(StateHandlerBase):
             torch.cuda.empty_cache()
             
             zit_path = resolve_model_path(self.models_dir, self.config.model_download_specs, "zit")
+            
+            depth_model_path = resolve_model_path(self.models_dir, self.config.model_download_specs, "depth_processor")
+            pose_model_path = resolve_model_path(self.models_dir, self.config.model_download_specs, "pose_processor")
+            person_detector_path = resolve_model_path(self.models_dir, self.config.model_download_specs, "person_detector")
+            
             controlnet_pipeline = ZitControlNetPipeline.create(
                 model_path=str(zit_path),
                 controlnet_path=str(controlnet_path),
                 device=self.config.device,
+                depth_model_path=str(depth_model_path) if depth_model_path.exists() else None,
+                pose_model_path=str(pose_model_path) if pose_model_path.exists() else None,
+                person_detector_model_path=str(person_detector_path) if person_detector_path.exists() else None,
             )
 
             self._generation.update_progress("inference", 15, 0, req.num_images)
@@ -157,6 +165,7 @@ class ImageGenerationHandler(StateHandlerBase):
                     num_inference_steps=req.num_inference_steps,
                     guidance_scale=req.guidance_scale,
                     controlnet_conditioning_scale=req.controlnet_conditioning_scale,
+                    negative_prompt=req.negative_prompt,
                     seed=seed + i,
                 )
 

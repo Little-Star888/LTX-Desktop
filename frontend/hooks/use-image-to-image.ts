@@ -9,6 +9,7 @@ export interface ImageToImageParams {
   imagePath: string
   maskPath?: string
   prompt: string
+  negativePrompt?: string
   mode: ImageToImageMode
   strength: number
   numInferenceSteps: number
@@ -134,6 +135,7 @@ export function useImageToImage() {
           num_inference_steps: params.numInferenceSteps,
           guidance_scale: params.guidanceScale,
           controlnet_conditioning_scale: params.controlnetConditioningScale,
+          negative_prompt: params.negativePrompt,
           seed: params.seed,
           num_images: params.numImages,
         }),

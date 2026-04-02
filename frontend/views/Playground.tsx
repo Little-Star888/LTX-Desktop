@@ -153,6 +153,7 @@ export function Playground() {
   const [img2ImgPanelKey, setImg2ImgPanelKey] = useState(0)
   const [img2ImgMode, setImg2ImgMode] = useState<ImageToImageMode>('img2img')
   const [img2ImgStrength, setImg2ImgStrength] = useState(0.8)
+  const [img2ImgNegativePrompt, setImg2ImgNegativePrompt] = useState('')
   const [img2ImgGuidanceScale, setImg2ImgGuidanceScale] = useState(7.0)
   const [img2ImgControlnetScale, setImg2ImgControlnetScale] = useState(0.8)
   const [img2ImgSteps, setImg2ImgSteps] = useState(20)
@@ -192,6 +193,7 @@ export function Playground() {
         prompt,
         mode: img2ImgMode,
         strength: img2ImgStrength,
+        negativePrompt: img2ImgNegativePrompt,
         numInferenceSteps: img2ImgSteps,
         guidanceScale: img2ImgGuidanceScale,
         controlnetConditioningScale: img2ImgControlnetScale,
@@ -417,6 +419,8 @@ export function Playground() {
                 onModeChange={setImg2ImgMode}
                 strength={img2ImgStrength}
                 onStrengthChange={setImg2ImgStrength}
+                negativePrompt={img2ImgNegativePrompt}
+                onNegativePromptChange={setImg2ImgNegativePrompt}
                 guidanceScale={img2ImgGuidanceScale}
                 onGuidanceScaleChange={setImg2ImgGuidanceScale}
                 controlnetScale={img2ImgControlnetScale}
