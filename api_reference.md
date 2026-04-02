@@ -421,9 +421,9 @@ curl -X POST http://localhost:8000/api/generate-image \
 | `depth_processor` | depth, depth_img2img | ~500MB | DPT-Hybrid MiDaS 深度估计模型 |
 | `pose_processor` | pose, pose_img2img | ~135MB | DWPose 姿态检测模型 |
 | `person_detector` | pose, pose_img2img | ~218MB | YOLOX 人体检测模型 |
-| `sam` | inpaint (auto_mask) | ~3.5GB | SAM 3.1 自动蒙版生成模型 |
+| `sam` | inpaint | ~3.5GB | SAM 3.1 自动蒙版生成模型 |
 
-> **注意:** 模型可在应用的 "Model Status" 菜单中下载。使用 depth 或 pose 相关模式前，请确保已下载对应的预处理模型。使用 inpaint 模式的 auto_mask 功能前，请确保已下载 SAM 模型。
+> **注意:** 模型可在应用的 "Model Status" 菜单中下载。使用 depth 或 pose 相关模式前，请确保已下载对应的预处理模型。使用 inpaint 模式前，请确保已下载 SAM 模型。
 
 **模式说明:**
 
@@ -485,25 +485,7 @@ curl -X POST http://localhost:8000/api/image-to-image \
   }'
 ```
 
-#### 示例 3: 局部重绘 (inpaint 模式) - 替换图片中的物体
-
-```bash
-curl -X POST http://localhost:8000/api/image-to-image \
-  -H "Content-Type: application/json" \
-  -d '{
-    "prompt": "a cat sitting on the chair",
-    "image_path": "/data/uploads/666.png",
-    "mask_path": "/data/uploads/room_mask.png",
-    "mode": "inpaint",
-    "num_inference_steps": 20,
-    "guidance_scale": 7.0,
-    "controlnet_conditioning_scale": 0.8
-  }'
-```
-
-> **注意:** inpaint 模式需要提供蒙版图片 (mask_path)，蒙版中白色区域为需要重绘的部分。
-
-#### 示例 3.1: 局部重绘 (inpaint 模式) - 使用 SAM 自动生成蒙版
+#### 示例 3: 局部重绘 (inpaint 模式) - 换衣服
 
 ```bash
 curl -X POST http://localhost:8000/api/image-to-image \
@@ -512,7 +494,23 @@ curl -X POST http://localhost:8000/api/image-to-image \
     "prompt": "a red dress, elegant design",
     "image_path": "/data/uploads/person.png",
     "mode": "inpaint",
-    "auto_mask": true,
+    "num_inference_steps": 20,
+    "guidance_scale": 7.0,
+    "controlnet_conditioning_scale": 0.8
+  }'
+```
+
+> **说明:** inpaint 模式会自动使用 SAM 模型根据 `prompt` 生成蒙版，只修改蒙版区域。SAM 会尝试分割 "a red dress"，然后在该区域生成红色连衣裙。
+
+#### 示例 3.1: 局部重绘 (inpaint 模式) - 精确指定分割对象
+
+```bash
+curl -X POST http://localhost:8000/api/image-to-image \
+  -H "Content-Type: application/json" \
+  -d '{
+    "prompt": "a red dress, elegant design, professional photography",
+    "image_path": "/data/uploads/person.png",
+    "mode": "inpaint",
     "mask_prompt": "dress",
     "num_inference_steps": 20,
     "guidance_scale": 7.0,
@@ -520,7 +518,7 @@ curl -X POST http://localhost:8000/api/image-to-image \
   }'
 ```
 
-> **注意:** 使用 `auto_mask: true` 时，SAM 会根据 `mask_prompt` 自动识别并分割对应区域。如果不提供 `mask_prompt`，则使用 `prompt` 作为分割依据。
+> **说明:** 使用 `mask_prompt` 参数可以单独指定 SAM 要分割的对象。这样 SAM 只需要分割 "dress"，而不是整个复杂描述。生成时使用完整的 `prompt`。
 
 #### 示例 4: 边缘检测标准模式 (canny) - 完全重绘保留边缘
 
@@ -678,7 +676,7 @@ curl -X POST http://localhost:8000/api/image-to-image \
 |------|------|--------|------|
 | `prompt` | string | 必需 | 提示词 |
 | `image_path` | string | 必需 | 输入图片路径（原图） |
-| `mask_path` | string | null | 蒙版图片路径（**仅 inpaint 模式必需**，优先级高于 auto_mask） |
+| `mask_prompt` | string | null | SAM 分割提示词，用于指定要分割的对象（**仅 inpaint 模式有效**，默认使用 `prompt`） |
 | `mode` | string | "img2img" | 模式: img2img, inpaint, canny, depth, pose, canny_img2img, depth_img2img, pose_img2img |
 | `strength` | float | 0.8 | 重绘幅度（**仅 img2img 模式有效**） |
 | `num_inference_steps` | int | 20 | 推理步数 |
@@ -687,10 +685,14 @@ curl -X POST http://localhost:8000/api/image-to-image \
 | `negative_prompt` | string | "" | 反向提示词，用于排除不想要的元素 |
 | `seed` | int | null | 随机种子（null 则自动生成） |
 | `num_images` | int | 1 | 生成图片数量 |
-| `auto_mask` | bool | false | 是否使用 SAM 自动生成蒙版（**仅 inpaint 模式有效**） |
-| `mask_prompt` | string | null | SAM 分割提示词，用于指定要分割的对象（**仅 auto_mask=true 时有效**） |
 
 **参数详解:**
+
+**`mask_prompt` (仅 inpaint 模式):**
+- 用于指定 SAM 要分割的对象
+- 如果不提供，默认使用 `prompt` 作为分割依据
+- 建议使用简单的名词短语，如 "dress"、"background"、"person"
+- 示例：`prompt: "a red dress, elegant design, professional photography"`，`mask_prompt: "dress"`
 
 **`strength` (仅 img2img 模式):**
 - 控制对原图的改变程度
@@ -724,31 +726,6 @@ curl -X POST http://localhost:8000/api/image-to-image \
   - inpaint 模式: 避免生成奇怪的手指、水印等
   - img2img 模式: 避免生成文字、变形等
   - canny/depth/pose 模式: 控制生成质量
-
-**`mask_path` (仅 inpaint 模式):**
-- 黑白蒙版图片，白色区域为需要重绘的部分
-- 必须与原图尺寸相同
-- 支持格式: png, jpg, jpeg
-- **优先级高于 auto_mask**：如果同时提供 mask_path 和 auto_mask=true，将使用 mask_path
-
-**`auto_mask` (仅 inpaint 模式):**
-- 是否使用 SAM 3.1 自动生成蒙版
-- 需要先下载 SAM 模型
-- 适用于不想手动制作蒙版的场景
-- 工作流程：
-  1. SAM 根据 mask_prompt 识别图片中的对象
-  2. 自动生成对应区域的蒙版
-  3. 使用蒙版进行 inpaint 重绘
-
-**`mask_prompt` (仅 auto_mask=true 时有效):**
-- SAM 分割提示词，用于指定要分割的对象
-- 示例：
-  - `"dress"` - 分割衣服
-  - `"person"` - 分割人物
-  - `"car"` - 分割汽车
-  - `"background"` - 分割背景
-- 如果不提供，则使用 prompt 作为分割依据
-- 建议使用简洁明确的名词
 
 **响应示例:**
 ```json

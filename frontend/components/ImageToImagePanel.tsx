@@ -24,8 +24,6 @@ export const IMAGE_TO_IMAGE_MODES: { value: ImageToImageMode; labelKey: string; 
 interface ImageToImagePanelProps {
   initialImageUrl?: string | null
   initialImagePath?: string | null
-  initialMaskUrl?: string | null
-  initialMaskPath?: string | null
   resetKey?: number
   fillHeight?: boolean
   isProcessing?: boolean
@@ -51,8 +49,6 @@ interface ImageToImagePanelProps {
   onChange?: (data: {
     imageUrl: string | null
     imagePath: string | null
-    maskUrl: string | null
-    maskPath: string | null
     mode: ImageToImageMode
     ready: boolean
   }) => void
@@ -61,8 +57,6 @@ interface ImageToImagePanelProps {
 export function ImageToImagePanel({
   initialImageUrl,
   initialImagePath,
-  initialMaskUrl,
-  initialMaskPath,
   resetKey,
   fillHeight = false,
   isProcessing = false,
@@ -90,10 +84,7 @@ export function ImageToImagePanel({
   const { t } = useTranslation()
   const [imageUrl, setImageUrl] = useState<string | null>(initialImageUrl || null)
   const [imagePath, setImagePath] = useState<string | null>(initialImagePath || null)
-  const [maskUrl, setMaskUrl] = useState<string | null>(initialMaskUrl || null)
-  const [maskPath, setMaskPath] = useState<string | null>(initialMaskPath || null)
   const [isDragOver, setIsDragOver] = useState(false)
-  const [isMaskDragOver, setIsMaskDragOver] = useState(false)
   const [showAdvanced, setShowAdvanced] = useState(false)
   const [preprocessedUrl, setPreprocessedUrl] = useState<string | null>(null)
   const [preprocessedPath, setPreprocessedPath] = useState<string | null>(null)
@@ -125,12 +116,10 @@ export function ImageToImagePanel({
     if (resetKey === undefined) return
     setImageUrl(initialImageUrl || null)
     setImagePath(initialImagePath || null)
-    setMaskUrl(initialMaskUrl || null)
-    setMaskPath(initialMaskPath || null)
     setPreprocessedUrl(null)
     setPreprocessedPath(null)
     setPreprocessError(null)
-  }, [resetKey, initialImageUrl, initialImagePath, initialMaskUrl, initialMaskPath])
+  }, [resetKey, initialImageUrl, initialImagePath])
 
   useEffect(() => {
     if (!imagePath || !needsPreprocess) {
@@ -171,12 +160,10 @@ export function ImageToImagePanel({
     onChange?.({
       imageUrl,
       imagePath,
-      maskUrl,
-      maskPath,
       mode,
       ready,
     })
-  }, [imageUrl, imagePath, maskUrl, maskPath, mode, onChange])
+  }, [imageUrl, imagePath, mode, onChange])
 
   const handleModeChange = useCallback((newMode: ImageToImageMode) => {
     setPreprocessError(null)
@@ -282,39 +269,9 @@ export function ImageToImagePanel({
     }
   }, [])
 
-  const handleMaskFileSelect = useCallback(async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0]
-    if (!file) return
-
-    if (isElectron) {
-      const filePath = (file as any).path as string | undefined
-      if (filePath) {
-        setMaskPath(filePath)
-        setMaskUrl(pathToUrl(filePath))
-        return
-      }
-    }
-
-    try {
-      const previewUrl = URL.createObjectURL(file)
-      const result = await api.uploadImage(file)
-      setMaskPath(result.file_id)
-      setMaskUrl(previewUrl)
-    } catch (error) {
-      logger.error('Failed to upload mask:', error)
-    }
-  }, [])
-
   const handleClear = useCallback(() => {
     setImageUrl(null)
     setImagePath(null)
-    setMaskUrl(null)
-    setMaskPath(null)
-  }, [])
-
-  const handleClearMask = useCallback(() => {
-    setMaskUrl(null)
-    setMaskPath(null)
   }, [])
 
   const handleDrop = useCallback(async (e: React.DragEvent) => {
@@ -358,34 +315,6 @@ export function ImageToImagePanel({
     }
   }, [])
 
-  const handleMaskDrop = useCallback(async (e: React.DragEvent) => {
-    e.preventDefault()
-    setIsMaskDragOver(false)
-
-    const file = e.dataTransfer.files?.[0]
-    if (file && file.type.startsWith('image/')) {
-      if (isElectron) {
-        const filePath = (file as any).path as string | undefined
-        if (filePath) {
-          setMaskPath(filePath)
-          setMaskUrl(pathToUrl(filePath))
-          return
-        }
-      }
-
-      try {
-        const previewUrl = URL.createObjectURL(file)
-        const result = await api.uploadImage(file)
-        setMaskPath(result.file_id)
-        setMaskUrl(previewUrl)
-      } catch (error) {
-        logger.error('Failed to upload mask:', error)
-      }
-    }
-  }, [])
-
-  const showMaskUpload = mode === 'inpaint'
-
   return (
     <div className={`bg-zinc-900 border border-zinc-800 rounded-2xl overflow-hidden flex flex-col ${fillHeight ? 'h-full min-h-0' : ''}`}>
       <input
@@ -394,13 +323,6 @@ export function ImageToImagePanel({
         onChange={handleFileSelect}
         className="hidden"
         id="img2img-input"
-      />
-      <input
-        type="file"
-        accept="image/png,image/jpeg,image/webp,image/bmp,.png,.jpg,.jpeg,.webp,.bmp"
-        onChange={handleMaskFileSelect}
-        className="hidden"
-        id="img2img-mask-input"
       />
 
       <div className="flex items-center justify-between px-4 py-3 border-b border-zinc-800 flex-shrink-0">
@@ -541,42 +463,6 @@ export function ImageToImagePanel({
                   ))}
                 </div>
               </div>
-
-              {showMaskUpload && (
-                <div>
-                  <label className="text-xs font-medium text-zinc-400 mb-1.5 block">
-                    {t('img2img.mask')}
-                  </label>
-                  {maskUrl ? (
-                    <div className="relative rounded-lg overflow-hidden bg-black">
-                      <img
-                        src={maskUrl}
-                        alt="Mask"
-                        className="w-full h-32 object-contain"
-                      />
-                      <button
-                        onClick={handleClearMask}
-                        className="absolute top-2 right-2 p-1 rounded bg-black/60 hover:bg-black/80 text-white transition-colors"
-                      >
-                        <Trash2 className="h-3 w-3" />
-                      </button>
-                    </div>
-                  ) : (
-                    <div
-                      className={`p-4 flex flex-col items-center justify-center gap-2 border-2 border-dashed rounded-lg transition-colors ${
-                        isMaskDragOver ? 'border-purple-500 bg-purple-500/10' : 'border-zinc-700'
-                      }`}
-                      onDragOver={(e) => { e.preventDefault(); setIsMaskDragOver(true) }}
-                      onDragLeave={() => setIsMaskDragOver(false)}
-                      onDrop={handleMaskDrop}
-                      onClick={() => document.getElementById('img2img-mask-input')?.click()}
-                    >
-                      <Upload className="h-4 w-4 text-zinc-500" />
-                      <span className="text-xs text-zinc-500">{t('img2img.dropMask')}</span>
-                    </div>
-                  )}
-                </div>
-              )}
 
               {mode === 'img2img' && (
                 <div>

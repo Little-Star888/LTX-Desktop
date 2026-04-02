@@ -15,7 +15,7 @@ export type ImageToImageMode =
 
 export interface ImageToImageParams {
   imagePath: string
-  maskPath?: string
+  maskPrompt?: string
   prompt: string
   negativePrompt?: string
   mode: ImageToImageMode
@@ -137,7 +137,7 @@ export function useImageToImage() {
         body: JSON.stringify({
           prompt: params.prompt,
           image_path: params.imagePath,
-          mask_path: params.maskPath,
+          mask_prompt: params.maskPrompt,
           mode: params.mode,
           strength: params.strength,
           num_inference_steps: params.numInferenceSteps,

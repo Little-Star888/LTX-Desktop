@@ -149,8 +149,6 @@ export function Playground() {
   const [img2ImgInput, setImg2ImgInput] = useState({
     imageUrl: null as string | null,
     imagePath: null as string | null,
-    maskUrl: null as string | null,
-    maskPath: null as string | null,
     mode: 'img2img' as ImageToImageMode,
     ready: false,
   })
@@ -195,7 +193,6 @@ export function Playground() {
       if (!img2ImgInput.imagePath || !img2ImgInput.ready || !prompt.trim()) return
       generateImg2Img({
         imagePath: img2ImgInput.imagePath,
-        maskPath: img2ImgInput.maskPath || undefined,
         prompt,
         mode: img2ImgMode,
         strength: img2ImgStrength,
@@ -269,8 +266,6 @@ export function Playground() {
     setImg2ImgInput({
       imageUrl: null,
       imagePath: null,
-      maskUrl: null,
-      maskPath: null,
       mode: 'img2img',
       ready: false,
     })

@@ -94,19 +94,6 @@ class ImageGenerationHandler(StateHandlerBase):
         if not image_path.exists():
             raise HTTPError(400, f"Image file not found: {req.image_path}")
 
-        mask_path: Path | None = None
-        if req.mask_path:
-            mask_path = Path(req.mask_path)
-            if not mask_path.exists():
-                raise HTTPError(400, f"Mask file not found: {req.mask_path}")
-
-        if req.mode == "inpaint" and not mask_path and not req.auto_mask:
-            raise HTTPError(
-                400,
-                "Inpaint mode requires either 'mask_path' or 'auto_mask=True'. "
-                "Please provide a mask image or enable auto_mask to use SAM for automatic mask generation."
-            )
-
         controlnet_path = resolve_model_path(self.models_dir, self.config.model_download_specs, "zit_controlnet")
         if not controlnet_path.exists():
             raise HTTPError(400, "ControlNet model not downloaded. Please download it from Model Status menu.")
@@ -153,14 +140,12 @@ class ImageGenerationHandler(StateHandlerBase):
             input_image = PILImage.open(image_path).convert("RGB")
             mask_image: PILImage | None = None
 
-            if mask_path:
-                mask_image = PILImage.open(mask_path).convert("L")
-            elif req.auto_mask and req.mode == "inpaint":
+            if req.mode == "inpaint":
                 sam_path = resolve_model_path(self.models_dir, self.config.model_download_specs, "sam")
                 if not sam_path.exists():
                     raise HTTPError(
                         400,
-                        "SAM model not downloaded. Please download 'sam' model from Model Status menu to use auto_mask feature."
+                        "SAM model not downloaded. Please download 'sam' model from Model Status menu to use inpaint mode."
                     )
 
                 self._generation.update_progress("generating_mask", 20, 0, req.num_images)

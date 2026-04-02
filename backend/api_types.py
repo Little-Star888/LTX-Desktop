@@ -310,7 +310,7 @@ ImageToImageMode = Literal["img2img", "inpaint", "canny", "depth", "pose", "cann
 class ImageToImageRequest(BaseModel):
     prompt: NonEmptyPrompt
     image_path: str
-    mask_path: str | None = None
+    mask_prompt: str | None = None
     mode: ImageToImageMode = "img2img"
     strength: float = 0.8
     num_inference_steps: int = 20
@@ -319,8 +319,6 @@ class ImageToImageRequest(BaseModel):
     negative_prompt: str = ""
     seed: int | None = None
     num_images: int = 1
-    auto_mask: bool = False
-    mask_prompt: str | None = None
 
 
 class ImageToImageResponse(BaseModel):
