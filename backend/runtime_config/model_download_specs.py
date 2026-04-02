@@ -33,6 +33,7 @@ MODEL_FILE_ORDER: tuple[ModelFileType, ...] = (
     "pose_processor",
     "text_encoder",
     "zit",
+    "zit_controlnet",
 )
 
 
@@ -99,6 +100,13 @@ DEFAULT_MODEL_DOWNLOAD_SPECS: dict[ModelFileType, ModelFileDownloadSpec] = {
         is_folder=True,
         repo_id="Tongyi-MAI/Z-Image-Turbo",
         description="Z-Image-Turbo model for text-to-image generation",
+    ),
+    "zit_controlnet": ModelFileDownloadSpec(
+        relative_path=Path("Z-Image-Turbo-Fun-Controlnet-Union-2.1-2602-8steps.safetensors"),
+        expected_size_bytes=3_500_000_000,
+        is_folder=False,
+        repo_id="alibaba-pai/Z-Image-Turbo-Fun-Controlnet-Union-2.1",
+        description="Z-Image ControlNet Union 2.0 for img2img/inpaint",
     ),
 }
 

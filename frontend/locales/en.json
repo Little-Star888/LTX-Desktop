@@ -60,6 +60,7 @@
     "mode": {
       "textToVideo": "Text to Video",
       "textToImage": "Text to Image",
+      "imageToImage": "Image to Image",
       "imageToVideo": "Image to Video",
       "audioToVideo": "Audio to Video",
       "retake": "Retake",
@@ -531,5 +532,33 @@
     "autoScrollDisabled": "Auto-scroll disabled",
     "lines": "lines (last 200)",
     "autoRefreshing": "Auto-refreshing every 2s"
+  },
+  "img2img": {
+    "title": "Image to Image",
+    "dropImage": "Drop an image here or click to upload",
+    "dropImageHint": "png, jpg, jpeg, webp, bmp",
+    "browse": "Browse",
+    "clearImage": "Clear image",
+    "replaceImage": "Replace image",
+    "mode": "Mode",
+    "img2img": "Image to Image",
+    "img2imgDesc": "Transform image with text prompt",
+    "inpaint": "Inpaint",
+    "inpaintDesc": "Edit specific regions with mask",
+    "canny": "Canny Edge",
+    "cannyDesc": "Preserve edge structure",
+    "depth": "Depth Map",
+    "depthDesc": "Preserve depth structure",
+    "mask": "Mask Image",
+    "dropMask": "Drop mask image or click to upload",
+    "strength": "Strength",
+    "guidanceScale": "Guidance Scale",
+    "controlnetScale": "ControlNet Scale",
+    "inferenceSteps": "Inference Steps",
+    "advancedSettings": "Advanced Settings",
+    "generate": "Generate",
+    "generating": "Generating...",
+    "generateComplete": "Generation complete",
+    "generateFailed": "Generation failed"
   }
 }

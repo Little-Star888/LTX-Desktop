@@ -5,6 +5,11 @@ set -euo pipefail
 # LTX-2 Video Generation — Docker Entrypoint
 # ────────────────────────────────────────────────────────────
 
+# Fix glibc malloc arena allocator memory fragmentation
+# Forces allocations >64KB to use mmap() which returns memory to OS immediately
+export MALLOC_MMAP_THRESHOLD_=65536
+export MALLOC_TRIM_THRESHOLD_=65536
+
 echo "═══════════════════════════════════════════════════════"
 echo " LTX-2 Video Generation Server (Docker)"
 echo "═══════════════════════════════════════════════════════"

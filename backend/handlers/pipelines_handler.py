@@ -143,6 +143,71 @@ class PipelinesHandler(StateHandlerBase):
             self._assert_invariants()
         self._gpu_cleaner.cleanup()
 
+    def force_unload_gpu_pipeline(self) -> None:
+        import gc
+        import torch
+        
+        pipeline_to_unload = None
+        with self._lock:
+            self._ensure_no_running_generation()
+            if self.state.gpu_slot is not None:
+                pipeline_to_unload = self.state.gpu_slot.active_pipeline
+                logger.info("Force unloading GPU pipeline: %s", type(pipeline_to_unload).__name__)
+                self.state.gpu_slot = None
+            else:
+                logger.info("No GPU pipeline to unload")
+            self.state.cpu_slot = None
+            
+            if self.state.text_encoder is not None and self.state.text_encoder.cached_encoder is not None:
+                logger.info("Clearing cached_encoder")
+                self.state.text_encoder.cached_encoder = None
+            
+            self._assert_invariants()
+        
+        if pipeline_to_unload is not None:
+            match pipeline_to_unload:
+                case VideoPipelineState(pipeline=p):
+                    logger.info("Unloading VideoPipeline")
+                    if hasattr(p, 'pipeline'):
+                        inner_pipeline = p.pipeline
+                        for attr in list(vars(inner_pipeline).keys()):
+                            try:
+                                delattr(inner_pipeline, attr)
+                            except Exception:
+                                pass
+                        del p.pipeline
+                    for attr in list(vars(p).keys()):
+                        try:
+                            delattr(p, attr)
+                        except Exception:
+                            pass
+                case ICLoraState(pipeline=p):
+                    for attr in list(vars(p).keys()):
+                        try:
+                            delattr(p, attr)
+                        except Exception:
+                            pass
+                case A2VPipelineState(pipeline=p):
+                    for attr in list(vars(p).keys()):
+                        try:
+                            delattr(p, attr)
+                        except Exception:
+                            pass
+                case RetakePipelineState(pipeline=p):
+                    for attr in list(vars(p).keys()):
+                        try:
+                            delattr(p, attr)
+                        except Exception:
+                            pass
+                case _:
+                    pass
+            del pipeline_to_unload
+        
+        gc.collect()
+        torch.cuda.empty_cache()
+        torch.cuda.synchronize()
+        logger.info("GPU memory cleanup completed, allocated: %d MB", torch.cuda.memory_allocated() // 1024 // 1024)
+
     def park_zit_on_cpu(self) -> None:
         zit: ImageGenerationPipeline | None = None
 

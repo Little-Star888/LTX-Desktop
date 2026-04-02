@@ -1,5 +1,5 @@
 import { useState, useRef, useEffect } from 'react'
-import { Sparkles, Trash2, Square, ImageIcon, ArrowLeft, Scissors } from 'lucide-react'
+import { Sparkles, Trash2, Square, ImageIcon, ArrowLeft, Scissors, ImagePlus } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import { logger } from '../lib/logger'
 import { ImageUploader } from '../components/ImageUploader'
@@ -15,6 +15,7 @@ import { Button } from '../components/ui/button'
 import { useGeneration } from '../hooks/use-generation'
 import { useRetake } from '../hooks/use-retake'
 import { useIcLora } from '../hooks/use-ic-lora'
+import { useImageToImage, type ImageToImageMode } from '../hooks/use-image-to-image'
 import { useBackend } from '../hooks/use-backend'
 import { useProjects } from '../contexts/ProjectContext'
 import { useAppSettings } from '../contexts/AppSettingsContext'
@@ -22,6 +23,7 @@ import { fileUrlToPath } from '../lib/url-to-path'
 import { sanitizeForcedApiVideoSettings } from '../lib/api-video-options'
 import { RetakePanel } from '../components/RetakePanel'
 import { ICLoraPanel, CONDITIONING_TYPES, type ICLoraConditioningType } from '../components/ICLoraPanel'
+import { ImageToImagePanel } from '../components/ImageToImagePanel'
 
 const DEFAULT_SETTINGS: GenerationSettings = {
   model: 'fast',
@@ -110,6 +112,16 @@ export function Playground() {
     icLoraResult,
   } = useIcLora()
 
+  const {
+    generate: generateImg2Img,
+    reset: resetImg2Img,
+    isGenerating: isImg2ImgGenerating,
+    status: img2ImgStatus,
+    progress: img2ImgProgress,
+    error: img2ImgError,
+    result: img2ImgResult,
+  } = useImageToImage()
+
   const [retakeInput, setRetakeInput] = useState({
     videoUrl: null as string | null,
     videoPath: null as string | null,
@@ -129,6 +141,21 @@ export function Playground() {
   const [icLoraPanelKey, setIcLoraPanelKey] = useState(0)
   const [icLoraCondType, setIcLoraCondType] = useState<ICLoraConditioningType>('canny')
   const [icLoraStrength, setIcLoraStrength] = useState(1.0)
+
+  const [img2ImgInput, setImg2ImgInput] = useState({
+    imageUrl: null as string | null,
+    imagePath: null as string | null,
+    maskUrl: null as string | null,
+    maskPath: null as string | null,
+    mode: 'img2img' as ImageToImageMode,
+    ready: false,
+  })
+  const [img2ImgPanelKey, setImg2ImgPanelKey] = useState(0)
+  const [img2ImgMode, setImg2ImgMode] = useState<ImageToImageMode>('img2img')
+  const [img2ImgStrength, setImg2ImgStrength] = useState(0.8)
+  const [img2ImgGuidanceScale, setImg2ImgGuidanceScale] = useState(7.0)
+  const [img2ImgControlnetScale, setImg2ImgControlnetScale] = useState(0.8)
+  const [img2ImgSteps, setImg2ImgSteps] = useState(20)
 
   // Ref to store generated image URL for "Create video" flow
   const generatedImageRef = useRef<string | null>(null)
@@ -157,6 +184,22 @@ export function Playground() {
       return
     }
 
+    if (mode === 'image-to-image') {
+      if (!img2ImgInput.imagePath || !img2ImgInput.ready || !prompt.trim()) return
+      generateImg2Img({
+        imagePath: img2ImgInput.imagePath,
+        maskPath: img2ImgInput.maskPath || undefined,
+        prompt,
+        mode: img2ImgMode,
+        strength: img2ImgStrength,
+        numInferenceSteps: img2ImgSteps,
+        guidanceScale: img2ImgGuidanceScale,
+        controlnetConditioningScale: img2ImgControlnetScale,
+        numImages: 1,
+      })
+      return
+    }
+
     if (mode === 'text-to-image') {
       if (!prompt.trim()) return
       // Text-to-image behavior remains tied to raw forceApiGenerations in useGeneration.
@@ -175,7 +218,7 @@ export function Playground() {
   }
   
   // Handle "Create video" from generated image
-  const handleCreateVideoFromImage = () => {
+  const handleCreateVideoFromImage = (imageUrl: string) => {
     if (!imageUrl) {
       logger.error('No image URL available')
       return
@@ -214,21 +257,39 @@ export function Playground() {
     setIcLoraPanelKey((prev) => prev + 1)
     setIcLoraCondType('canny')
     setIcLoraStrength(1.0)
+    setImg2ImgInput({
+      imageUrl: null,
+      imagePath: null,
+      maskUrl: null,
+      maskPath: null,
+      mode: 'img2img',
+      ready: false,
+    })
+    setImg2ImgPanelKey((prev) => prev + 1)
+    setImg2ImgMode('img2img')
+    setImg2ImgStrength(0.8)
+    setImg2ImgGuidanceScale(7.0)
+    setImg2ImgControlnetScale(0.8)
+    setImg2ImgSteps(20)
     resetRetake()
     resetIcLora()
+    resetImg2Img()
     reset()
   }
 
   const isRetakeMode = mode === 'retake'
   const isIcLoraMode = mode === 'ic-lora'
+  const isImg2ImgMode = mode === 'image-to-image'
   const isVideoMode = mode === 'text-to-video' || mode === 'image-to-video'
-  const isBusy = isRetakeMode ? isRetaking : isIcLoraMode ? isIcLoraGenerating : isGenerating
+  const isBusy = isRetakeMode ? isRetaking : isIcLoraMode ? isIcLoraGenerating : isImg2ImgMode ? isImg2ImgGenerating : isGenerating
   const canGenerate = processStatus === 'alive' && !isBusy && (
     isRetakeMode
       ? retakeInput.ready && !!retakeInput.videoPath
       : isIcLoraMode
         ? icLoraInput.ready && !!icLoraInput.videoPath && !!prompt.trim()
-        : !!prompt.trim()
+        : isImg2ImgMode
+          ? img2ImgInput.ready && !!img2ImgInput.imagePath && !!prompt.trim()
+          : !!prompt.trim()
   )
 
   return (
@@ -346,6 +407,27 @@ export function Playground() {
               </>
             )}
 
+            {isImg2ImgMode && (
+              <ImageToImagePanel
+                resetKey={img2ImgPanelKey}
+                isProcessing={isImg2ImgGenerating}
+                processingStatus={img2ImgStatus}
+                processingProgress={img2ImgProgress}
+                mode={img2ImgMode}
+                onModeChange={setImg2ImgMode}
+                strength={img2ImgStrength}
+                onStrengthChange={setImg2ImgStrength}
+                guidanceScale={img2ImgGuidanceScale}
+                onGuidanceScaleChange={setImg2ImgGuidanceScale}
+                controlnetScale={img2ImgControlnetScale}
+                onControlnetScaleChange={setImg2ImgControlnetScale}
+                numInferenceSteps={img2ImgSteps}
+                onNumInferenceStepsChange={setImg2ImgSteps}
+                outputImageUrl={img2ImgResult?.imageUrls?.[0] || null}
+                onChange={setImg2ImgInput}
+              />
+            )}
+
             {/* Prompt Input */}
             <Textarea
               label={t('playground.settings.title')}
@@ -359,7 +441,7 @@ export function Playground() {
             />
 
             {/* Settings */}
-            {!isRetakeMode && !isIcLoraMode && (
+            {!isRetakeMode && !isIcLoraMode && !isImg2ImgMode && (
               <SettingsPanel
                 settings={settings}
                 onSettingsChange={setSettings}
@@ -371,16 +453,16 @@ export function Playground() {
             )}
 
             {/* Error Display */}
-            {(generationError || retakeError || icLoraError) && (
+            {(generationError || retakeError || icLoraError || img2ImgError) && (
               <div className="p-3 bg-red-500/10 border border-red-500/20 rounded-lg text-sm">
-                {(generationError || retakeError || icLoraError)!.includes('TEXT_ENCODING_NOT_CONFIGURED') ? (
+                {(generationError || retakeError || icLoraError || img2ImgError)!.includes('TEXT_ENCODING_NOT_CONFIGURED') ? (
                   <div className="space-y-2">
                     <p className="text-red-400 font-medium">Text encoding not configured</p>
                     <p className="text-red-400/80">
                       To generate videos, you need to set up text encoding in Settings.
                     </p>
                   </div>
-                ) : (generationError || retakeError || icLoraError)!.includes('TEXT_ENCODER_NOT_DOWNLOADED') ? (
+                ) : (generationError || retakeError || icLoraError || img2ImgError)!.includes('TEXT_ENCODER_NOT_DOWNLOADED') ? (
                   <div className="space-y-2">
                     <p className="text-red-400 font-medium">Text encoder not downloaded</p>
                     <p className="text-red-400/80">
@@ -388,7 +470,7 @@ export function Playground() {
                     </p>
                   </div>
                 ) : (
-                  <span className="text-red-400">{generationError || retakeError || icLoraError}</span>
+                  <span className="text-red-400">{generationError || retakeError || icLoraError || img2ImgError}</span>
                 )}
               </div>
             )}
@@ -405,7 +487,7 @@ export function Playground() {
                 {t('common.clear')}
               </Button>
               
-              {isGenerating ? (
+              {isGenerating || isImg2ImgGenerating ? (
                 <Button
                   onClick={cancel}
                   className="flex-1 flex items-center justify-center gap-2 bg-red-600 hover:bg-red-500 text-white"
@@ -428,6 +510,11 @@ export function Playground() {
                     <>
                       <Sparkles className="h-4 w-4" />
                       {isIcLoraGenerating ? t('icLora.generating') : t('icLora.generate')}
+                    </>
+                  ) : isImg2ImgMode ? (
+                    <>
+                      <ImagePlus className="h-4 w-4" />
+                      {isImg2ImgGenerating ? t('img2img.generating') : t('img2img.generate')}
                     </>
                   ) : mode === 'text-to-image' ? (
                     <>
@@ -454,6 +541,14 @@ export function Playground() {
               isGenerating={isGenerating}
               progress={progress}
               statusMessage={statusMessage}
+              onCreateVideo={handleCreateVideoFromImage}
+            />
+          ) : mode === 'image-to-image' ? (
+            <ImageResult
+              imageUrl={img2ImgResult?.imageUrls?.[0] || null}
+              isGenerating={isImg2ImgGenerating}
+              progress={img2ImgProgress}
+              statusMessage={img2ImgStatus}
               onCreateVideo={handleCreateVideoFromImage}
             />
           ) : mode === 'retake' ? (

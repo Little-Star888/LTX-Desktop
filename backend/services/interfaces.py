@@ -13,6 +13,7 @@ from services.gpu_info.gpu_info import GpuInfo, GpuTelemetryPayload
 from services.http_client.http_client import HTTPClient, HttpResponseLike, HttpTimeoutError
 from services.ic_lora_pipeline.ic_lora_pipeline import IcLoraPipeline
 from services.image_generation_pipeline.image_generation_pipeline import ImageGenerationPipeline
+from services.image_generation_pipeline.zit_controlnet_pipeline import ZitControlNetPipeline, ImageToImageMode
 from services.ltx_api_client.ltx_api_client import LTXAPIClient
 from services.retake_pipeline.retake_pipeline import RetakePipeline
 from services.model_downloader.model_downloader import ModelDownloader
@@ -44,6 +45,8 @@ __all__ = [
     "FastVideoPipeline",
     "ZitAPIClient",
     "ImageGenerationPipeline",
+    "ZitControlNetPipeline",
+    "ImageToImageMode",
     "IcLoraPipeline",
     "LTXAPIClient",
     "RetakePipeline",

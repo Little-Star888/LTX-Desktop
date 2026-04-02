@@ -60,6 +60,7 @@
     "mode": {
       "textToVideo": "文字生成视频",
       "textToImage": "文字生成图片",
+      "imageToImage": "图片生成图片",
       "imageToVideo": "图片生成视频",
       "audioToVideo": "音频生成视频",
       "retake": "视频重制",
@@ -531,5 +532,33 @@
     "autoScrollDisabled": "自动滚动已禁用",
     "lines": "行 (最近 200 行)",
     "autoRefreshing": "每 2 秒自动刷新"
+  },
+  "img2img": {
+    "title": "图生图",
+    "dropImage": "拖放图片到此处或点击上传",
+    "dropImageHint": "png, jpg, jpeg, webp, bmp",
+    "browse": "浏览",
+    "clearImage": "清除图片",
+    "replaceImage": "替换图片",
+    "mode": "模式",
+    "img2img": "图生图",
+    "img2imgDesc": "使用文本提示词转换图片",
+    "inpaint": "局部重绘",
+    "inpaintDesc": "使用遮罩编辑特定区域",
+    "canny": "边缘检测",
+    "cannyDesc": "保留边缘结构",
+    "depth": "深度图",
+    "depthDesc": "保留深度结构",
+    "mask": "遮罩图片",
+    "dropMask": "拖放遮罩图片或点击上传",
+    "strength": "强度",
+    "guidanceScale": "引导比例",
+    "controlnetScale": "ControlNet 强度",
+    "inferenceSteps": "推理步数",
+    "advancedSettings": "高级设置",
+    "generate": "生成",
+    "generating": "生成中...",
+    "generateComplete": "生成完成",
+    "generateFailed": "生成失败"
   }
 }

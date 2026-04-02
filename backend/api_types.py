@@ -18,6 +18,7 @@ ModelFileType = Literal[
     "pose_processor",
     "text_encoder",
     "zit",
+    "zit_controlnet",
 ]
 
 
@@ -300,3 +301,24 @@ class IcLoraGenerateRequest(BaseModel):
     cfg_guidance_scale: float = 1.0
     negative_prompt: str = ""
     images: list[IcLoraImageInput] = Field(default_factory=_default_ic_lora_images)
+
+
+ImageToImageMode = Literal["img2img", "inpaint", "canny", "depth", "pose"]
+
+
+class ImageToImageRequest(BaseModel):
+    prompt: NonEmptyPrompt
+    image_path: str
+    mask_path: str | None = None
+    mode: ImageToImageMode = "img2img"
+    strength: float = 0.8
+    num_inference_steps: int = 20
+    guidance_scale: float = 7.0
+    controlnet_conditioning_scale: float = 0.8
+    seed: int | None = None
+    num_images: int = 1
+
+
+class ImageToImageResponse(BaseModel):
+    status: str
+    image_paths: list[str] | None = None

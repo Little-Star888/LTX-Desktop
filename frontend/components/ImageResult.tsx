@@ -8,7 +8,7 @@ interface ImageResultProps {
   isGenerating: boolean
   progress: number
   statusMessage: string
-  onCreateVideo: () => void
+  onCreateVideo: (imageUrl: string) => void
 }
 
 export function ImageResult({ 
@@ -70,7 +70,7 @@ export function ImageResult({
             <img
               src={imageUrl}
               alt="Generated image"
-              className="max-w-full max-h-full object-contain"
+              className="w-auto h-auto max-w-full max-h-full object-contain"
             />
             
             {/* Hover overlay - LTX Studio style */}
@@ -124,7 +124,7 @@ export function ImageResult({
                 </Button>
                 
                 <Button
-                  onClick={onCreateVideo}
+                  onClick={() => imageUrl && onCreateVideo(imageUrl)}
                   className="h-10 px-4 bg-blue-600 hover:bg-blue-500 text-white rounded-full flex items-center gap-2"
                   title="Create video from this image"
                 >

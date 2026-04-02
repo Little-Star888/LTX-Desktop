@@ -1,10 +1,10 @@
 import { cn } from '@/lib/utils'
-import { Video, ImageIcon, Scissors, Sparkles } from 'lucide-react'
+import { Video, ImageIcon, Scissors, Sparkles, ImagePlus } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 
-export type GenerationMode = 'text-to-video' | 'image-to-video' | 'text-to-image' | 'retake' | 'ic-lora'
+export type GenerationMode = 'text-to-video' | 'image-to-video' | 'text-to-image' | 'image-to-image' | 'retake' | 'ic-lora'
 
-type TabMode = 'video' | 'text-to-image' | 'retake' | 'ic-lora'
+type TabMode = 'video' | 'text-to-image' | 'image-to-image' | 'retake' | 'ic-lora'
 
 interface ModeTabsProps {
   mode: GenerationMode
@@ -19,17 +19,20 @@ export function ModeTabs({ mode, onModeChange, disabled, showIcLora = true }: Mo
   const tabs: { id: TabMode; label: string; genMode: GenerationMode; icon: React.ElementType }[] = [
     { id: 'video', label: t('playground.mode.textToVideo'), genMode: 'text-to-video', icon: Video },
     { id: 'text-to-image', label: t('playground.mode.textToImage'), genMode: 'text-to-image', icon: ImageIcon },
+    { id: 'image-to-image', label: t('playground.mode.imageToImage'), genMode: 'image-to-image', icon: ImagePlus },
     { id: 'retake', label: t('playground.mode.retake'), genMode: 'retake', icon: Scissors },
     { id: 'ic-lora', label: t('playground.mode.icLora'), genMode: 'ic-lora', icon: Sparkles },
   ]
   
   const activeTab: TabMode = mode === 'text-to-image'
     ? 'text-to-image'
-    : mode === 'retake'
-      ? 'retake'
-      : mode === 'ic-lora'
-        ? 'ic-lora'
-        : 'video'
+    : mode === 'image-to-image'
+      ? 'image-to-image'
+      : mode === 'retake'
+        ? 'retake'
+        : mode === 'ic-lora'
+          ? 'ic-lora'
+          : 'video'
   const visibleTabs = showIcLora ? tabs : tabs.filter((tab) => tab.id !== 'ic-lora')
 
   return (

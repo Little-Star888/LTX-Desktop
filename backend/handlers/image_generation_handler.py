@@ -11,11 +11,12 @@ from threading import RLock
 from typing import TYPE_CHECKING
 
 from _routes._errors import HTTPError
-from api_types import GenerateImageRequest, GenerateImageResponse
+from api_types import GenerateImageRequest, GenerateImageResponse, ImageToImageRequest, ImageToImageResponse
 from handlers.base import StateHandlerBase
 from handlers.generation_handler import GenerationHandler
 from handlers.pipelines_handler import PipelinesHandler
-from services.interfaces import ZitAPIClient
+from runtime_config.model_download_specs import resolve_model_path
+from services.interfaces import ZitAPIClient, ZitControlNetPipeline
 from state.app_state_types import AppState
 
 if TYPE_CHECKING:
@@ -83,6 +84,105 @@ class ImageGenerationHandler(StateHandlerBase):
             if "cancelled" in str(e).lower():
                 logger.info("Image generation cancelled by user")
                 return GenerateImageResponse(status="cancelled")
+            raise HTTPError(500, str(e)) from e
+
+    def generate_img2img(self, req: ImageToImageRequest) -> ImageToImageResponse:
+        if self._generation.is_generation_running():
+            raise HTTPError(409, "Generation already in progress")
+
+        image_path = Path(req.image_path)
+        if not image_path.exists():
+            raise HTTPError(400, f"Image file not found: {req.image_path}")
+
+        mask_path: Path | None = None
+        if req.mask_path:
+            mask_path = Path(req.mask_path)
+            if not mask_path.exists():
+                raise HTTPError(400, f"Mask file not found: {req.mask_path}")
+
+        controlnet_path = resolve_model_path(self.models_dir, self.config.model_download_specs, "zit_controlnet")
+        if not controlnet_path.exists():
+            raise HTTPError(400, "ControlNet model not downloaded. Please download it from Model Status menu.")
+
+        generation_id = uuid.uuid4().hex[:8]
+        settings = self.state.app_settings.model_copy(deep=True)
+        if req.seed is not None:
+            seed = req.seed
+        elif settings.seed_locked:
+            seed = settings.locked_seed
+        else:
+            seed = int(time.time()) % 2147483647
+
+        try:
+            self._generation.start_api_generation(generation_id)
+            self._generation.update_progress("loading_model", 5, 0, req.num_images)
+
+            self._pipelines.force_unload_gpu_pipeline()
+            
+            import gc
+            import torch
+            gc.collect()
+            torch.cuda.empty_cache()
+            
+            zit_path = resolve_model_path(self.models_dir, self.config.model_download_specs, "zit")
+            controlnet_pipeline = ZitControlNetPipeline.create(
+                model_path=str(zit_path),
+                controlnet_path=str(controlnet_path),
+                device=self.config.device,
+            )
+
+            self._generation.update_progress("inference", 15, 0, req.num_images)
+
+            from PIL import Image as PILImage
+
+            input_image = PILImage.open(image_path).convert("RGB")
+            mask_image = PILImage.open(mask_path).convert("L") if mask_path else None
+
+            outputs: list[str] = []
+            timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+
+            for i in range(req.num_images):
+                if self._generation.is_generation_cancelled():
+                    raise RuntimeError("Generation was cancelled")
+
+                progress = 15 + int((i / req.num_images) * 70)
+                self._generation.update_progress("inference", progress, i, req.num_images)
+
+                result = controlnet_pipeline.generate_img2img(
+                    prompt=req.prompt,
+                    image=input_image,
+                    mask_image=mask_image,
+                    mode=req.mode,
+                    strength=req.strength,
+                    num_inference_steps=req.num_inference_steps,
+                    guidance_scale=req.guidance_scale,
+                    controlnet_conditioning_scale=req.controlnet_conditioning_scale,
+                    seed=seed + i,
+                )
+
+                output_path = self.config.outputs_dir / f"img2img_{timestamp}_{uuid.uuid4().hex[:8]}.png"
+                result.images[0].save(str(output_path))
+                outputs.append(str(output_path))
+
+            del controlnet_pipeline
+            gc.collect()
+            torch.cuda.empty_cache()
+
+            if self._generation.is_generation_cancelled():
+                raise RuntimeError("Generation was cancelled")
+
+            self._generation.update_progress("complete", 100, req.num_images, req.num_images)
+            self._generation.complete_generation(outputs)
+            return ImageToImageResponse(status="complete", image_paths=outputs)
+
+        except HTTPError:
+            self._generation.fail_generation("Image-to-image generation failed")
+            raise
+        except Exception as e:
+            self._generation.fail_generation(str(e))
+            if "cancelled" in str(e).lower():
+                logger.info("Image-to-image generation cancelled by user")
+                return ImageToImageResponse(status="cancelled")
             raise HTTPError(500, str(e)) from e
 
     def generate_image(
