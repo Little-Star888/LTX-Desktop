@@ -172,6 +172,8 @@ class ZitControlNetPipeline:
             output = pipeline(
                 prompt=prompt,
                 control_image=control_image.resize((width, height)),
+                width=width,
+                height=height,
                 num_inference_steps=num_inference_steps,
                 guidance_scale=guidance_scale,
                 controlnet_conditioning_scale=controlnet_conditioning_scale,
@@ -193,6 +195,8 @@ class ZitControlNetPipeline:
                 image=resized_image,
                 mask_image=resized_mask,
                 control_image=control_image.resize((width, height)),
+                width=width,
+                height=height,
                 num_inference_steps=num_inference_steps,
                 guidance_scale=guidance_scale,
                 controlnet_conditioning_scale=controlnet_conditioning_scale,
