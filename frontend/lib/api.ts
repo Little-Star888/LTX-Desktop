@@ -226,6 +226,20 @@ export const api = {
     
     return response.json()
   },
+
+  async preprocessImage(params: { image_path: string; mode: 'canny' | 'depth' | 'pose' | 'canny_img2img' | 'depth_img2img' | 'pose_img2img' }) {
+    return apiFetchJson('/api/preprocess-image', {
+      method: 'POST',
+      body: JSON.stringify(params),
+    })
+  },
+
+  async imageToImage(params: Record<string, unknown>) {
+    return apiFetchJson('/api/image-to-image', {
+      method: 'POST',
+      body: JSON.stringify(params),
+    })
+  },
 }
 
 export { apiFetch as backendFetch }

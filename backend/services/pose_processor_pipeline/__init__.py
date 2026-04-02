@@ -1,3 +1,3 @@
-from services.pose_processor_pipeline.pose_processor_pipeline import PoseProcessorPipeline
+from services.pose_processor_pipeline.dw_pose_pipeline import DWPosePipeline
 
-__all__ = ["PoseProcessorPipeline"]
+__all__ = ["DWPosePipeline"]

@@ -77,6 +77,10 @@ export function Playground() {
   // Handle mode change
   const handleModeChange = (newMode: GenerationMode) => {
     setMode(newMode)
+    reset()
+    resetRetake()
+    resetIcLora()
+    resetImg2Img()
   }
   const { 
     isGenerating, 
@@ -157,6 +161,8 @@ export function Playground() {
   const [img2ImgGuidanceScale, setImg2ImgGuidanceScale] = useState(7.0)
   const [img2ImgControlnetScale, setImg2ImgControlnetScale] = useState(0.8)
   const [img2ImgSteps, setImg2ImgSteps] = useState(20)
+  const [img2ImgSeed, setImg2ImgSeed] = useState<number | null>(null)
+  const [img2ImgNumImages, setImg2ImgNumImages] = useState(1)
 
   // Ref to store generated image URL for "Create video" flow
   const generatedImageRef = useRef<string | null>(null)
@@ -197,7 +203,8 @@ export function Playground() {
         numInferenceSteps: img2ImgSteps,
         guidanceScale: img2ImgGuidanceScale,
         controlnetConditioningScale: img2ImgControlnetScale,
-        numImages: 1,
+        seed: img2ImgSeed,
+        numImages: img2ImgNumImages,
       })
       return
     }
@@ -427,6 +434,10 @@ export function Playground() {
                 onControlnetScaleChange={setImg2ImgControlnetScale}
                 numInferenceSteps={img2ImgSteps}
                 onNumInferenceStepsChange={setImg2ImgSteps}
+                seed={img2ImgSeed}
+                onSeedChange={setImg2ImgSeed}
+                numImages={img2ImgNumImages}
+                onNumImagesChange={setImg2ImgNumImages}
                 outputImageUrl={img2ImgResult?.imageUrls?.[0] || null}
                 onChange={setImg2ImgInput}
               />

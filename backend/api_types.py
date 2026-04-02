@@ -304,7 +304,7 @@ class IcLoraGenerateRequest(BaseModel):
     images: list[IcLoraImageInput] = Field(default_factory=_default_ic_lora_images)
 
 
-ImageToImageMode = Literal["img2img", "inpaint", "canny", "depth", "pose"]
+ImageToImageMode = Literal["img2img", "inpaint", "canny", "depth", "pose", "canny_img2img", "depth_img2img", "pose_img2img"]
 
 
 class ImageToImageRequest(BaseModel):

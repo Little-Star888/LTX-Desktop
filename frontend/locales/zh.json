@@ -546,9 +546,17 @@
     "inpaint": "局部重绘",
     "inpaintDesc": "使用遮罩编辑特定区域",
     "canny": "边缘检测",
-    "cannyDesc": "保留边缘结构",
+    "cannyDesc": "保留边缘结构，完全重绘",
     "depth": "深度图",
-    "depthDesc": "保留深度结构",
+    "depthDesc": "保留深度结构，完全重绘",
+    "pose": "姿态检测",
+    "poseDesc": "保留人物姿态，完全重绘",
+    "cannyImg2img": "边缘检测（增强）",
+    "cannyImg2imgDesc": "保留边缘结构 + 原图色彩",
+    "depthImg2img": "深度图（增强）",
+    "depthImg2imgDesc": "保留深度结构 + 原图色彩",
+    "poseImg2img": "姿态检测（增强）",
+    "poseImg2imgDesc": "保留人物姿态 + 原图色彩",
     "mask": "遮罩图片",
     "dropMask": "拖放遮罩图片或点击上传",
     "strength": "重绘幅度",
@@ -563,6 +571,12 @@
     "generate": "生成",
     "generating": "生成中...",
     "generateComplete": "生成完成",
-    "generateFailed": "生成失败"
+    "generateFailed": "生成失败",
+    "preprocessedImage": "预处理结果",
+    "preprocessing": "正在预处理...",
+    "seed": "随机种子",
+    "seedPlaceholder": "留空使用随机种子",
+    "randomSeed": "随机种子",
+    "numImages": "生成数量"
   }
 }

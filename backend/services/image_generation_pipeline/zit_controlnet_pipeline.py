@@ -6,6 +6,7 @@ from collections.abc import Sequence
 from dataclasses import dataclass
 from typing import Any, Literal, cast
 
+import numpy as np
 import torch
 from PIL.Image import Image as PILImage
 from PIL import Image as PILImageModule
@@ -18,7 +19,7 @@ class _ZImageControlNetOutput:
     images: Sequence[PILImageType]
 
 
-ImageToImageMode = Literal["img2img", "inpaint", "canny", "depth", "pose"]
+ImageToImageMode = Literal["img2img", "inpaint", "canny", "depth", "pose", "canny_img2img", "depth_img2img", "pose_img2img"]
 
 
 class ZitControlNetPipeline:
@@ -84,7 +85,7 @@ class ZitControlNetPipeline:
 
     def _ensure_pipeline_loaded(self, mode: ImageToImageMode) -> None:
         need_img2img = mode == "img2img"
-        need_inpaint = mode == "inpaint"
+        need_inpaint = mode in ("inpaint", "canny_img2img", "depth_img2img", "pose_img2img")
         need_controlnet = mode in ("canny", "depth", "pose")
         
         if need_img2img and self._img2img_pipeline is None:
@@ -331,11 +332,33 @@ class ZitControlNetPipeline:
                 output_type="pil",
                 return_dict=True,
             )
-        else:
+        elif mode in ("canny", "depth", "pose"):
             pipeline = cast(Any, self._controlnet_pipeline)
             control_image = self._prepare_control_image(image, mode, width, height)
             output = pipeline(
                 prompt=prompt,
+                control_image=control_image,
+                width=width,
+                height=height,
+                num_inference_steps=num_inference_steps,
+                guidance_scale=guidance_scale,
+                controlnet_conditioning_scale=controlnet_conditioning_scale,
+                negative_prompt=negative_prompt if negative_prompt else None,
+                generator=generator,
+                output_type="pil",
+                return_dict=True,
+            )
+        else:
+            pipeline = cast(Any, self._inpaint_pipeline)
+            control_mode = mode.replace("_img2img", "")
+            control_image = self._prepare_control_image(image, control_mode, width, height)
+            
+            white_mask = PILImageModule.fromarray(np.ones((height, width), dtype=np.uint8) * 255)
+            
+            output = pipeline(
+                prompt=prompt,
+                image=resized_image,
+                mask_image=white_mask,
                 control_image=control_image,
                 width=width,
                 height=height,

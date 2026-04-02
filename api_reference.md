@@ -417,23 +417,43 @@ curl -X POST http://localhost:8000/api/generate-image \
 | 模型 | 模式 | 大小 | 说明 |
 |------|------|------|------|
 | `zit` | 所有模式 | ~31GB | Z-Image-Turbo 基础模型 |
-| `zit_controlnet` | inpaint/canny/depth/pose | ~3.5GB | ControlNet Union 模型 |
-| `depth_processor` | depth | ~500MB | DPT-Hybrid MiDaS 深度估计模型 |
-| `pose_processor` | pose | ~135MB | DWPose 姿态检测模型 |
-| `person_detector` | pose | ~218MB | YOLOX 人体检测模型 |
+| `zit_controlnet` | inpaint/canny/depth/pose 及增强模式 | ~3.5GB | ControlNet Union 模型 |
+| `depth_processor` | depth, depth_img2img | ~500MB | DPT-Hybrid MiDaS 深度估计模型 |
+| `pose_processor` | pose, pose_img2img | ~135MB | DWPose 姿态检测模型 |
+| `person_detector` | pose, pose_img2img | ~218MB | YOLOX 人体检测模型 |
 | `sam` | inpaint (auto_mask) | ~3.5GB | SAM 3.1 自动蒙版生成模型 |
 
-> **注意:** 模型可在应用的 "Model Status" 菜单中下载。使用 depth 或 pose 模式前，请确保已下载对应的预处理模型。使用 inpaint 模式的 auto_mask 功能前，请确保已下载 SAM 模型。
+> **注意:** 模型可在应用的 "Model Status" 菜单中下载。使用 depth 或 pose 相关模式前，请确保已下载对应的预处理模型。使用 inpaint 模式的 auto_mask 功能前，请确保已下载 SAM 模型。
 
 **模式说明:**
 
-| 模式 | 使用的管道 | 关键参数 | 说明 |
-|------|-----------|---------|------|
-| `img2img` | ZImageImg2ImgPipeline | `strength` | 基础图生图，根据提示词修改原图 |
-| `inpaint` | ZImageControlNetInpaintPipeline | `mask_path`, `controlnet_conditioning_scale` | 图像修复，需要提供 mask_path，仅修改蒙版区域 |
-| `canny` | ZImageControlNetPipeline | `controlnet_conditioning_scale` | 使用 Canny 边缘检测作为条件，保留边缘结构 |
-| `depth` | ZImageControlNetPipeline | `controlnet_conditioning_scale` | 使用深度图作为条件，保留空间结构 |
-| `pose` | ZImageControlNetPipeline | `controlnet_conditioning_scale` | 使用姿态检测作为条件，保留人物姿态 |
+| 模式 | Pipeline | 效果 | 适用场景 |
+|------|----------|------|---------|
+| `img2img` | ZImageImg2ImgPipeline | 基础图生图，根据提示词修改原图 | 简单风格调整 |
+| `inpaint` | ZImageControlNetInpaintPipeline | 局部重绘，仅修改蒙版区域 | 换衣服、替换物体 |
+| `canny` | ZImageControlNetPipeline | **完全重绘**，只保留边缘结构 | 完全重制场景 |
+| `depth` | ZImageControlNetPipeline | **完全重绘**，只保留深度结构 | 完全重制场景 |
+| `pose` | ZImageControlNetPipeline | **完全重绘**，只保留人物姿态 | 把普通人变成钢铁侠 |
+| `canny_img2img` | ZImageControlNetInpaintPipeline | **保留原图色彩** + 边缘控制 | 照片变油画风格 |
+| `depth_img2img` | ZImageControlNetInpaintPipeline | **保留原图色彩** + 深度控制 | 场景风格转换 |
+| `pose_img2img` | ZImageControlNetInpaintPipeline | **保留原图色彩** + 姿态控制 | 人物风格转换 |
+
+> **技术原理详解:**
+> 
+> **API 参数:** 用户只需要传递原图路径 (`image_path`)，后端会自动进行预处理。不需要传递预处理后的图片路径。
+> 
+> **内部处理流程:**
+> 
+> | 模式类型 | 内部处理 | 传递给 Pipeline 的参数 |
+> |---------|---------|---------------------|
+> | `img2img` | 无预处理 | `image` (原图) |
+> | `inpaint` | 预处理原图 | `image` + `mask_image` + `control_image` |
+> | **标准模式** (`canny/depth/pose`) | 预处理原图 | **只传** `control_image` (预处理图) |
+> | **增强模式** (`*_img2img`) | 预处理原图 + 生成全白 mask | `image` (原图) + `mask_image` (全白) + `control_image` (预处理图) |
+> 
+> **标准模式 vs 增强模式:**
+> - **标准模式** (`canny/depth/pose`): 使用 `ZImageControlNetPipeline`，这是**纯文生图**管道。只传预处理后的控制图，原图的色彩、背景会完全丢失，AI 会根据提示词从零开始生成。适用于"完全重制"场景。
+> - **增强模式** (`canny_img2img/depth_img2img/pose_img2img`): 使用 `ZImageControlNetInpaintPipeline` + 全白 mask 的"黑科技"方案。同时传入原图和预处理后的控制图，既能保留原图的色彩信息，又能用 ControlNet 控制结构。适用于"风格转换"场景。
 
 #### 示例 1: 图生图 (img2img 模式) - 将照片转换为油画风格
 
@@ -502,7 +522,7 @@ curl -X POST http://localhost:8000/api/image-to-image \
 
 > **注意:** 使用 `auto_mask: true` 时，SAM 会根据 `mask_prompt` 自动识别并分割对应区域。如果不提供 `mask_prompt`，则使用 `prompt` 作为分割依据。
 
-#### 示例 4: 边缘检测 (canny 模式) - 保留边缘结构生成新图
+#### 示例 4: 边缘检测标准模式 (canny) - 完全重绘保留边缘
 
 ```bash
 curl -X POST http://localhost:8000/api/image-to-image \
@@ -517,22 +537,26 @@ curl -X POST http://localhost:8000/api/image-to-image \
   }'
 ```
 
-#### 示例 5: 边缘检测 (canny 模式) - 将照片转换为素描风格
+> **效果:** 原图的色彩、背景会完全丢失，AI 会根据提示词从零开始生成，只保留边缘结构。
+
+#### 示例 5: 边缘检测增强模式 (canny_img2img) - 风格转换保留色彩
 
 ```bash
 curl -X POST http://localhost:8000/api/image-to-image \
   -H "Content-Type: application/json" \
   -d '{
-    "prompt": "pencil sketch, hand drawn, artistic lines, black and white",
-    "image_path": "/data/uploads/666.png",
-    "mode": "canny",
-    "num_inference_steps": 25,
-    "guidance_scale": 8.0,
-    "controlnet_conditioning_scale": 1.0
+    "prompt": "oil painting style, van gogh inspired, artistic brushstrokes",
+    "image_path": "/data/uploads/portrait.png",
+    "mode": "canny_img2img",
+    "num_inference_steps": 20,
+    "guidance_scale": 7.0,
+    "controlnet_conditioning_scale": 0.8
   }'
 ```
 
-#### 示例 6: 深度图 (depth 模式) - 保留空间结构重新渲染
+> **效果:** 保留原图的色彩和氛围，同时用边缘控制结构，生成油画风格。
+
+#### 示例 6: 深度图标准模式 (depth) - 完全重绘保留空间结构
 
 ```bash
 curl -X POST http://localhost:8000/api/image-to-image \
@@ -547,28 +571,32 @@ curl -X POST http://localhost:8000/api/image-to-image \
   }'
 ```
 
-#### 示例 7: 深度图 (depth 模式) - 改变场景氛围
+> **效果:** 原图的色彩、背景会完全丢失，AI 会根据提示词从零开始生成，只保留深度结构。
+
+#### 示例 7: 深度图增强模式 (depth_img2img) - 场景风格转换
 
 ```bash
 curl -X POST http://localhost:8000/api/image-to-image \
   -H "Content-Type: application/json" \
   -d '{
-    "prompt": "underwater scene, coral reef, tropical fish, sunlight rays through water",
+    "prompt": "underwater scene style, blue tones, ocean atmosphere",
     "image_path": "/data/uploads/landscape.png",
-    "mode": "depth",
+    "mode": "depth_img2img",
     "num_inference_steps": 25,
     "guidance_scale": 7.5,
     "controlnet_conditioning_scale": 0.9
   }'
 ```
 
-#### 示例 8: 姿态检测 (pose 模式) - 保持人物姿态更换服装/背景
+> **效果:** 保留原图的色彩基调，同时用深度控制空间结构，生成水下风格。
+
+#### 示例 8: 姿态检测标准模式 (pose) - 完全重绘保留姿态
 
 ```bash
 curl -X POST http://localhost:8000/api/image-to-image \
   -H "Content-Type: application/json" \
   -d '{
-    "prompt": "a person wearing medieval armor, castle background, fantasy style",
+    "prompt": "iron man armor, marvel superhero, high tech suit, glowing arc reactor",
     "image_path": "/data/uploads/person.png",
     "mode": "pose",
     "num_inference_steps": 20,
@@ -577,7 +605,9 @@ curl -X POST http://localhost:8000/api/image-to-image \
   }'
 ```
 
-#### 示例 9: 姿态检测 (pose 模式) - 改变人物风格
+> **效果:** 原图的色彩、背景、人物长相会完全丢失，AI 会根据提示词从零开始生成钢铁侠，只保留原人物的姿态。
+
+#### 示例 9: 姿态检测增强模式 (pose_img2img) - 人物风格转换
 
 ```bash
 curl -X POST http://localhost:8000/api/image-to-image \
@@ -585,12 +615,14 @@ curl -X POST http://localhost:8000/api/image-to-image \
   -d '{
     "prompt": "anime style character, vibrant colors, cel shading",
     "image_path": "/data/uploads/portrait.png",
-    "mode": "pose",
+    "mode": "pose_img2img",
     "num_inference_steps": 25,
     "guidance_scale": 8.0,
     "controlnet_conditioning_scale": 0.7
   }'
 ```
+
+> **效果:** 保留原图的人物特征和背景，同时用姿态控制确保人物结构不变，生成动漫风格。
 
 #### 示例 10: 使用随机种子生成可复现结果
 
@@ -631,7 +663,7 @@ curl -X POST http://localhost:8000/api/image-to-image \
   -H "Content-Type: application/json" \
   -d '{
     "prompt": "a beautiful woman portrait, professional photography",
-    "image_path": "/data/uploads/zit-image-1775106421491.png",
+    "image_path": "/data/uploads/portrait.png",
     "mode": "img2img",
     "strength": 0.5,
     "num_inference_steps": 25,
@@ -645,18 +677,18 @@ curl -X POST http://localhost:8000/api/image-to-image \
 | 参数 | 类型 | 默认值 | 说明 |
 |------|------|--------|------|
 | `prompt` | string | 必需 | 提示词 |
-| `image_path` | string | 必需 | 输入图片路径 |
-| `mask_path` | string | null | 蒙版图片路径 (**仅 inpaint 模式必需**，优先级高于 auto_mask) |
-| `mode` | string | "img2img" | 模式: img2img, inpaint, canny, depth, pose |
-| `strength` | float | 0.8 | 重绘幅度 (**仅 img2img 模式有效**) |
+| `image_path` | string | 必需 | 输入图片路径（原图） |
+| `mask_path` | string | null | 蒙版图片路径（**仅 inpaint 模式必需**，优先级高于 auto_mask） |
+| `mode` | string | "img2img" | 模式: img2img, inpaint, canny, depth, pose, canny_img2img, depth_img2img, pose_img2img |
+| `strength` | float | 0.8 | 重绘幅度（**仅 img2img 模式有效**） |
 | `num_inference_steps` | int | 20 | 推理步数 |
 | `guidance_scale` | float | 7.0 | CFG 引导强度 |
-| `controlnet_conditioning_scale` | float | 0.8 | ControlNet 条件强度 (**inpaint/canny/depth/pose 模式有效**) |
+| `controlnet_conditioning_scale` | float | 0.8 | ControlNet 条件强度（**inpaint/canny/depth/pose 及增强模式有效**） |
 | `negative_prompt` | string | "" | 反向提示词，用于排除不想要的元素 |
-| `seed` | int | null | 随机种子 (null 则自动生成) |
+| `seed` | int | null | 随机种子（null 则自动生成） |
 | `num_images` | int | 1 | 生成图片数量 |
-| `auto_mask` | bool | false | 是否使用 SAM 自动生成蒙版 (**仅 inpaint 模式有效**) |
-| `mask_prompt` | string | null | SAM 分割提示词，用于指定要分割的对象 (**仅 auto_mask=true 时有效**) |
+| `auto_mask` | bool | false | 是否使用 SAM 自动生成蒙版（**仅 inpaint 模式有效**） |
+| `mask_prompt` | string | null | SAM 分割提示词，用于指定要分割的对象（**仅 auto_mask=true 时有效**） |
 
 **参数详解:**
 
@@ -667,12 +699,23 @@ curl -X POST http://localhost:8000/api/image-to-image \
 - 0.4-0.6: 中等变化，平衡原图和创意
 - 0.7-1.0: 大幅变化，几乎完全重绘
 
-**`controlnet_conditioning_scale` (inpaint/canny/depth/pose 模式):**
+**`controlnet_conditioning_scale` (inpaint/canny/depth/pose 及增强模式):**
 - 控制生成结果与原图结构的相似程度
 - 范围: 0.3 - 1.5
 - 0.3-0.6: 更自由发挥，变化较大
 - 0.7-0.9: 平衡原图结构和创意
 - 1.0-1.5: 严格遵循原图结构
+
+**模式选择指南:**
+
+| 想要的效果 | 推荐模式 | 说明 |
+|-----------|---------|------|
+| 简单风格调整 | `img2img` | 使用 strength 控制变化程度 |
+| 换衣服、替换物体 | `inpaint` | 只修改 mask 区域 |
+| 把普通人变成钢铁侠 | `pose` | 完全重绘，只保留姿态 |
+| 照片变油画风格 | `canny_img2img` | 保留色彩 + 边缘控制 |
+| 场景风格转换 | `depth_img2img` | 保留色彩 + 深度控制 |
+| 人物风格转换 | `pose_img2img` | 保留色彩 + 姿态控制 |
 
 **`negative_prompt` (所有模式):**
 - 反向提示词，用于排除不想要的元素

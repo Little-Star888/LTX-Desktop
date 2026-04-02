@@ -3,7 +3,15 @@ import { backendFetch } from '../lib/backend'
 import { logger } from '../lib/logger'
 import { pathToUrl } from '../lib/url-to-path'
 
-export type ImageToImageMode = 'img2img' | 'inpaint' | 'canny' | 'depth' | 'pose'
+export type ImageToImageMode = 
+  | 'img2img' 
+  | 'inpaint' 
+  | 'canny' 
+  | 'depth' 
+  | 'pose' 
+  | 'canny_img2img' 
+  | 'depth_img2img' 
+  | 'pose_img2img'
 
 export interface ImageToImageParams {
   imagePath: string

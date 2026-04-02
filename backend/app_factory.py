@@ -22,6 +22,7 @@ from _routes.ic_lora import router as ic_lora_router
 from _routes.image_gen import router as image_gen_router
 from _routes.image_to_image import router as image_to_image_router
 from _routes.models import router as models_router
+from _routes.preprocess import router as preprocess_router
 from _routes.suggest_gap_prompt import router as suggest_gap_prompt_router
 from _routes.retake import router as retake_router
 from _routes.remote import router as remote_router
@@ -122,6 +123,7 @@ def create_app(
     app.include_router(settings_router)
     app.include_router(image_gen_router)
     app.include_router(image_to_image_router)
+    app.include_router(preprocess_router)
     app.include_router(suggest_gap_prompt_router)
     app.include_router(retake_router)
     app.include_router(ic_lora_router)

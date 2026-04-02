@@ -15,6 +15,10 @@ export const IMAGE_TO_IMAGE_MODES: { value: ImageToImageMode; labelKey: string; 
   { value: 'inpaint', labelKey: 'img2img.inpaint', descKey: 'img2img.inpaintDesc' },
   { value: 'canny', labelKey: 'img2img.canny', descKey: 'img2img.cannyDesc' },
   { value: 'depth', labelKey: 'img2img.depth', descKey: 'img2img.depthDesc' },
+  { value: 'pose', labelKey: 'img2img.pose', descKey: 'img2img.poseDesc' },
+  { value: 'canny_img2img', labelKey: 'img2img.cannyImg2img', descKey: 'img2img.cannyImg2imgDesc' },
+  { value: 'depth_img2img', labelKey: 'img2img.depthImg2img', descKey: 'img2img.depthImg2imgDesc' },
+  { value: 'pose_img2img', labelKey: 'img2img.poseImg2img', descKey: 'img2img.poseImg2imgDesc' },
 ]
 
 interface ImageToImagePanelProps {
@@ -39,6 +43,10 @@ interface ImageToImagePanelProps {
   onControlnetScaleChange?: (scale: number) => void
   numInferenceSteps?: number
   onNumInferenceStepsChange?: (steps: number) => void
+  seed?: number | null
+  onSeedChange?: (seed: number | null) => void
+  numImages?: number
+  onNumImagesChange?: (num: number) => void
   outputImageUrl?: string | null
   onChange?: (data: {
     imageUrl: string | null
@@ -72,6 +80,10 @@ export function ImageToImagePanel({
   onControlnetScaleChange,
   numInferenceSteps: numInferenceStepsProp,
   onNumInferenceStepsChange,
+  seed: seedProp,
+  onSeedChange,
+  numImages: numImagesProp,
+  onNumImagesChange,
   outputImageUrl,
   onChange,
 }: ImageToImagePanelProps) {
@@ -83,6 +95,10 @@ export function ImageToImagePanel({
   const [isDragOver, setIsDragOver] = useState(false)
   const [isMaskDragOver, setIsMaskDragOver] = useState(false)
   const [showAdvanced, setShowAdvanced] = useState(false)
+  const [preprocessedUrl, setPreprocessedUrl] = useState<string | null>(null)
+  const [preprocessedPath, setPreprocessedPath] = useState<string | null>(null)
+  const [isPreprocessing, setIsPreprocessing] = useState(false)
+  const [preprocessError, setPreprocessError] = useState<string | null>(null)
 
   const [localMode, setLocalMode] = useState<ImageToImageMode>('img2img')
   const [localStrength, setLocalStrength] = useState(0.8)
@@ -90,6 +106,8 @@ export function ImageToImagePanel({
   const [localGuidanceScale, setLocalGuidanceScale] = useState(7.0)
   const [localControlnetScale, setLocalControlnetScale] = useState(0.8)
   const [localNumInferenceSteps, setLocalNumInferenceSteps] = useState(20)
+  const [localSeed, setLocalSeed] = useState<number | null>(null)
+  const [localNumImages, setLocalNumImages] = useState(1)
 
   const mode = modeProp ?? localMode
   const strength = strengthProp ?? localStrength
@@ -97,6 +115,11 @@ export function ImageToImagePanel({
   const guidanceScale = guidanceScaleProp ?? localGuidanceScale
   const controlnetScale = controlnetScaleProp ?? localControlnetScale
   const numInferenceSteps = numInferenceStepsProp ?? localNumInferenceSteps
+  const seed = seedProp ?? localSeed
+  const numImages = numImagesProp ?? localNumImages
+
+  const needsPreprocess = mode === 'canny' || mode === 'depth' || mode === 'pose' 
+    || mode === 'canny_img2img' || mode === 'depth_img2img' || mode === 'pose_img2img'
 
   useEffect(() => {
     if (resetKey === undefined) return
@@ -104,7 +127,44 @@ export function ImageToImagePanel({
     setImagePath(initialImagePath || null)
     setMaskUrl(initialMaskUrl || null)
     setMaskPath(initialMaskPath || null)
+    setPreprocessedUrl(null)
+    setPreprocessedPath(null)
+    setPreprocessError(null)
   }, [resetKey, initialImageUrl, initialImagePath, initialMaskUrl, initialMaskPath])
+
+  useEffect(() => {
+    if (!imagePath || !needsPreprocess) {
+      setPreprocessedUrl(null)
+      setPreprocessedPath(null)
+      setPreprocessError(null)
+      return
+    }
+
+    const doPreprocess = async () => {
+      setIsPreprocessing(true)
+      setPreprocessError(null)
+      try {
+        const preprocessMode = mode.replace('_img2img', '') as 'canny' | 'depth' | 'pose'
+        const result = await api.preprocessImage({
+          image_path: imagePath,
+          mode: preprocessMode,
+        })
+        const preprocessedPath = result.preprocessed_path
+        setPreprocessedPath(preprocessedPath)
+        setPreprocessedUrl(pathToUrl(preprocessedPath))
+      } catch (error) {
+        const message = (error as Error).message || 'Preprocessing failed'
+        logger.error(`Preprocessing error: ${message}`)
+        setPreprocessError(message)
+        setPreprocessedUrl(null)
+        setPreprocessedPath(null)
+      } finally {
+        setIsPreprocessing(false)
+      }
+    }
+
+    doPreprocess()
+  }, [imagePath, mode, needsPreprocess])
 
   useEffect(() => {
     const ready = !!imagePath
@@ -119,6 +179,9 @@ export function ImageToImagePanel({
   }, [imageUrl, imagePath, maskUrl, maskPath, mode, onChange])
 
   const handleModeChange = useCallback((newMode: ImageToImageMode) => {
+    setPreprocessError(null)
+    setPreprocessedUrl(null)
+    setPreprocessedPath(null)
     if (onModeChange) {
       onModeChange(newMode)
     } else {
@@ -165,6 +228,22 @@ export function ImageToImagePanel({
       setLocalNumInferenceSteps(newSteps)
     }
   }, [onNumInferenceStepsChange])
+
+  const handleSeedChange = useCallback((newSeed: number | null) => {
+    if (onSeedChange) {
+      onSeedChange(newSeed)
+    } else {
+      setLocalSeed(newSeed)
+    }
+  }, [onSeedChange])
+
+  const handleNumImagesChange = useCallback((newNum: number) => {
+    if (onNumImagesChange) {
+      onNumImagesChange(newNum)
+    } else {
+      setLocalNumImages(newNum)
+    }
+  }, [onNumImagesChange])
 
   const handleBrowse = useCallback(async () => {
     if (isElectron) {
@@ -392,11 +471,11 @@ export function ImageToImagePanel({
           </div>
         ) : (
           <div className="space-y-4">
-            <div className="relative rounded-lg overflow-hidden bg-black">
+            <div className="relative rounded-lg overflow-auto bg-black max-h-64">
               <img
                 src={outputImageUrl || imageUrl}
                 alt="Input"
-                className="w-full h-auto max-h-64 object-contain"
+                className="w-full h-auto object-contain"
               />
               {isProcessing && (
                 <div className="absolute inset-0 bg-black/60 flex flex-col items-center justify-center gap-2">
@@ -411,6 +490,35 @@ export function ImageToImagePanel({
                 </div>
               )}
             </div>
+
+            {needsPreprocess && (
+              <div className="space-y-2">
+                <label className="text-xs font-medium text-zinc-400 block">
+                  {t('img2img.preprocessedImage')}
+                </label>
+                {isPreprocessing ? (
+                  <div className="p-4 flex flex-col items-center justify-center gap-2 bg-zinc-800 rounded-lg">
+                    <Loader2 className="h-5 w-5 text-purple-400 animate-spin" />
+                    <span className="text-xs text-zinc-400">{t('img2img.preprocessing')}</span>
+                  </div>
+                ) : preprocessError ? (
+                  <div className="p-3 bg-red-500/10 border border-red-500/20 rounded-lg">
+                    <div className="flex items-center gap-2">
+                      <AlertCircle className="h-4 w-4 text-red-400" />
+                      <span className="text-xs text-red-400">{preprocessError}</span>
+                    </div>
+                  </div>
+                ) : preprocessedUrl ? (
+                  <div className="relative rounded-lg overflow-auto bg-black max-h-48">
+                    <img
+                      src={preprocessedUrl}
+                      alt="Preprocessed"
+                      className="w-full h-auto object-contain"
+                    />
+                  </div>
+                ) : null}
+              </div>
+            )}
 
             <div className="space-y-3">
               <div>
@@ -555,6 +663,43 @@ export function ImageToImagePanel({
                       step="1"
                       value={numInferenceSteps}
                       onChange={(e) => handleNumInferenceStepsChange(parseInt(e.target.value))}
+                      className="w-full accent-purple-500"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="text-xs font-medium text-zinc-400 mb-1.5 block">
+                      {t('img2img.seed')}
+                    </label>
+                    <div className="flex items-center gap-2">
+                      <input
+                        type="number"
+                        value={seed ?? ''}
+                        onChange={(e) => handleSeedChange(e.target.value ? parseInt(e.target.value) : null)}
+                        placeholder={t('img2img.seedPlaceholder')}
+                        className="flex-1 px-3 py-2 text-xs bg-zinc-800 border border-zinc-700 rounded-lg text-white placeholder-zinc-500 focus:outline-none focus:border-purple-500"
+                      />
+                      <button
+                        onClick={() => handleSeedChange(null)}
+                        className="px-2 py-2 text-xs bg-zinc-800 border border-zinc-700 rounded-lg text-zinc-400 hover:text-white hover:border-zinc-600 transition-colors"
+                        title={t('img2img.randomSeed')}
+                      >
+                        <RefreshCw className="h-3.5 w-3.5" />
+                      </button>
+                    </div>
+                  </div>
+
+                  <div>
+                    <label className="text-xs font-medium text-zinc-400 mb-1.5 block">
+                      {t('img2img.numImages')}: {numImages}
+                    </label>
+                    <input
+                      type="range"
+                      min="1"
+                      max="4"
+                      step="1"
+                      value={numImages}
+                      onChange={(e) => handleNumImagesChange(parseInt(e.target.value))}
                       className="w-full accent-purple-500"
                     />
                   </div>

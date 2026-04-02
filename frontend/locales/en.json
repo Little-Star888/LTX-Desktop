@@ -546,9 +546,17 @@
     "inpaint": "Inpaint",
     "inpaintDesc": "Edit specific regions with mask",
     "canny": "Canny Edge",
-    "cannyDesc": "Preserve edge structure",
+    "cannyDesc": "Preserve edge structure, full repaint",
     "depth": "Depth Map",
-    "depthDesc": "Preserve depth structure",
+    "depthDesc": "Preserve depth structure, full repaint",
+    "pose": "Pose Detection",
+    "poseDesc": "Preserve human pose, full repaint",
+    "cannyImg2img": "Canny Edge (Enhanced)",
+    "cannyImg2imgDesc": "Preserve edge + original colors",
+    "depthImg2img": "Depth Map (Enhanced)",
+    "depthImg2imgDesc": "Preserve depth + original colors",
+    "poseImg2img": "Pose Detection (Enhanced)",
+    "poseImg2imgDesc": "Preserve pose + original colors",
     "mask": "Mask Image",
     "dropMask": "Drop mask image or click to upload",
     "strength": "Strength",
@@ -563,6 +571,12 @@
     "generate": "Generate",
     "generating": "Generating...",
     "generateComplete": "Generation complete",
-    "generateFailed": "Generation failed"
+    "generateFailed": "Generation failed",
+    "preprocessedImage": "Preprocessed Image",
+    "preprocessing": "Preprocessing...",
+    "seed": "Seed",
+    "seedPlaceholder": "Leave empty for random seed",
+    "randomSeed": "Random Seed",
+    "numImages": "Number of Images"
   }
 }
