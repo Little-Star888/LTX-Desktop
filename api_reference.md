@@ -11,6 +11,8 @@
 - [2. 模型管理](#2-模型管理)
 - [3. 视频生成](#3-视频生成)
 - [4. 图像生成](#4-图像生成)
+  - [4.1 文生图](#41-文生图)
+  - [4.2 图生图 (Image-to-Image)](#42-图生图-image-to-image)
 - [5. 视频剪辑/重生成](#5-视频剪辑重生成)
 - [6. IC-LoRA 控制生成](#6-ic-lora-控制生成)
 - [7. 提示词建议](#7-提示词建议)
@@ -170,6 +172,7 @@ curl "http://localhost:8000/api/models/required-models?skipTextEncoder=true"
 | `checkpoint` | 主模型 | 43 GB |
 | `upsampler` | 2x 放大器 | 2 GB |
 | `zit` | 图像生成 | 31 GB |
+| `zit_controlnet` | ControlNet (图生图) | 2.5 GB |
 | `text_encoder` | 文本编码器 | 25 GB |
 | `distilled_lora` | LoRA (可选) | 400 MB |
 | `ic_lora` | IC-LoRA (可选) | 654 MB |
@@ -186,7 +189,7 @@ curl -X POST http://localhost:8000/api/models/download \
 # 下载所有模型
 curl -X POST http://localhost:8000/api/models/download \
   -H "Content-Type: application/json" \
-  -d '{"modelTypes": ["checkpoint", "upsampler", "zit", "text_encoder", "distilled_lora", "ic_lora", "depth_processor", "person_detector", "pose_processor"]}'
+  -d '{"modelTypes": ["checkpoint", "upsampler", "zit", "zit_controlnet", "text_encoder", "distilled_lora", "ic_lora", "depth_processor", "person_detector", "pose_processor"]}'
 
 # 下载单个模型
 curl -X POST http://localhost:8000/api/models/download \
@@ -399,6 +402,238 @@ curl -X POST http://localhost:8000/api/generate-image \
   "status": "success",
   "image_paths": [
     "/data/outputs/image_20240326_123456.png"
+  ]
+}
+```
+
+---
+
+### 4.2 图生图 (Image-to-Image)
+
+使用 ControlNet 从图片生成新图片，支持多种模式。
+
+**模式说明:**
+
+| 模式 | 使用的管道 | 关键参数 | 说明 |
+|------|-----------|---------|------|
+| `img2img` | ZImageImg2ImgPipeline | `strength` | 基础图生图，根据提示词修改原图 |
+| `inpaint` | ZImageControlNetInpaintPipeline | `mask_path`, `controlnet_conditioning_scale` | 图像修复，需要提供 mask_path，仅修改蒙版区域 |
+| `canny` | ZImageControlNetPipeline | `controlnet_conditioning_scale` | 使用 Canny 边缘检测作为条件，保留边缘结构 |
+| `depth` | ZImageControlNetPipeline | `controlnet_conditioning_scale` | 使用深度图作为条件，保留空间结构 |
+| `pose` | ZImageControlNetPipeline | `controlnet_conditioning_scale` | 使用姿态检测作为条件，保留人物姿态 |
+
+#### 示例 1: 图生图 (img2img 模式) - 将照片转换为油画风格
+
+```bash
+curl -X POST http://localhost:8000/api/image-to-image \
+  -H "Content-Type: application/json" \
+  -d '{
+    "prompt": "oil painting style, artistic brushstrokes, masterpiece",
+    "image_path": "/data/uploads/666.png",
+    "mode": "img2img",
+    "strength": 0.7,
+    "num_inference_steps": 20,
+    "guidance_scale": 7.0
+  }'
+```
+
+#### 示例 2: 图生图 (img2img 模式) - 轻微风格调整
+
+```bash
+curl -X POST http://localhost:8000/api/image-to-image \
+  -H "Content-Type: application/json" \
+  -d '{
+    "prompt": "add sunset lighting, warm colors, golden hour",
+    "image_path": "/data/uploads/landscape.png",
+    "mode": "img2img",
+    "strength": 0.3,
+    "num_inference_steps": 20,
+    "guidance_scale": 7.0
+  }'
+```
+
+#### 示例 3: 局部重绘 (inpaint 模式) - 替换图片中的物体
+
+```bash
+curl -X POST http://localhost:8000/api/image-to-image \
+  -H "Content-Type: application/json" \
+  -d '{
+    "prompt": "a cat sitting on the chair",
+    "image_path": "/data/uploads/room.png",
+    "mask_path": "/data/uploads/room_mask.png",
+    "mode": "inpaint",
+    "num_inference_steps": 20,
+    "guidance_scale": 7.0,
+    "controlnet_conditioning_scale": 0.8
+  }'
+```
+
+> **注意:** inpaint 模式需要提供蒙版图片 (mask_path)，蒙版中白色区域为需要重绘的部分。
+
+#### 示例 4: 边缘检测 (canny 模式) - 保留边缘结构生成新图
+
+```bash
+curl -X POST http://localhost:8000/api/image-to-image \
+  -H "Content-Type: application/json" \
+  -d '{
+    "prompt": "a futuristic cyberpunk cityscape at night, neon lights, rain",
+    "image_path": "/data/uploads/city.png",
+    "mode": "canny",
+    "num_inference_steps": 20,
+    "guidance_scale": 7.0,
+    "controlnet_conditioning_scale": 0.8
+  }'
+```
+
+#### 示例 5: 边缘检测 (canny 模式) - 将照片转换为素描风格
+
+```bash
+curl -X POST http://localhost:8000/api/image-to-image \
+  -H "Content-Type: application/json" \
+  -d '{
+    "prompt": "pencil sketch, hand drawn, artistic lines, black and white",
+    "image_path": "/data/uploads/portrait.png",
+    "mode": "canny",
+    "num_inference_steps": 25,
+    "guidance_scale": 8.0,
+    "controlnet_conditioning_scale": 1.0
+  }'
+```
+
+#### 示例 6: 深度图 (depth 模式) - 保留空间结构重新渲染
+
+```bash
+curl -X POST http://localhost:8000/api/image-to-image \
+  -H "Content-Type: application/json" \
+  -d '{
+    "prompt": "a mystical forest with glowing mushrooms, fantasy art style",
+    "image_path": "/data/uploads/forest.png",
+    "mode": "depth",
+    "num_inference_steps": 20,
+    "guidance_scale": 7.0,
+    "controlnet_conditioning_scale": 0.8
+  }'
+```
+
+#### 示例 7: 深度图 (depth 模式) - 改变场景氛围
+
+```bash
+curl -X POST http://localhost:8000/api/image-to-image \
+  -H "Content-Type: application/json" \
+  -d '{
+    "prompt": "underwater scene, coral reef, tropical fish, sunlight rays through water",
+    "image_path": "/data/uploads/landscape.png",
+    "mode": "depth",
+    "num_inference_steps": 25,
+    "guidance_scale": 7.5,
+    "controlnet_conditioning_scale": 0.9
+  }'
+```
+
+#### 示例 8: 姿态检测 (pose 模式) - 保持人物姿态更换服装/背景
+
+```bash
+curl -X POST http://localhost:8000/api/image-to-image \
+  -H "Content-Type: application/json" \
+  -d '{
+    "prompt": "a person wearing medieval armor, castle background, fantasy style",
+    "image_path": "/data/uploads/person.png",
+    "mode": "pose",
+    "num_inference_steps": 20,
+    "guidance_scale": 7.0,
+    "controlnet_conditioning_scale": 0.8
+  }'
+```
+
+#### 示例 9: 姿态检测 (pose 模式) - 改变人物风格
+
+```bash
+curl -X POST http://localhost:8000/api/image-to-image \
+  -H "Content-Type: application/json" \
+  -d '{
+    "prompt": "anime style character, vibrant colors, cel shading",
+    "image_path": "/data/uploads/portrait.png",
+    "mode": "pose",
+    "num_inference_steps": 25,
+    "guidance_scale": 8.0,
+    "controlnet_conditioning_scale": 0.7
+  }'
+```
+
+#### 示例 10: 使用随机种子生成可复现结果
+
+```bash
+curl -X POST http://localhost:8000/api/image-to-image \
+  -H "Content-Type: application/json" \
+  -d '{
+    "prompt": "watercolor painting style, soft colors, artistic",
+    "image_path": "/data/uploads/flower.png",
+    "mode": "img2img",
+    "strength": 0.6,
+    "num_inference_steps": 20,
+    "guidance_scale": 7.0,
+    "seed": 12345
+  }'
+```
+
+#### 示例 11: 生成多张图片
+
+```bash
+curl -X POST http://localhost:8000/api/image-to-image \
+  -H "Content-Type: application/json" \
+  -d '{
+    "prompt": "impressionist painting style, monet inspired",
+    "image_path": "/data/uploads/garden.png",
+    "mode": "img2img",
+    "strength": 0.5,
+    "num_inference_steps": 20,
+    "guidance_scale": 7.0,
+    "num_images": 4
+  }'
+```
+
+**请求参数:**
+
+| 参数 | 类型 | 默认值 | 说明 |
+|------|------|--------|------|
+| `prompt` | string | 必需 | 提示词 |
+| `image_path` | string | 必需 | 输入图片路径 |
+| `mask_path` | string | null | 蒙版图片路径 (**仅 inpaint 模式必需**) |
+| `mode` | string | "img2img" | 模式: img2img, inpaint, canny, depth, pose |
+| `strength` | float | 0.8 | 重绘幅度 (**仅 img2img 模式有效**) |
+| `num_inference_steps` | int | 20 | 推理步数 |
+| `guidance_scale` | float | 7.0 | CFG 引导强度 |
+| `controlnet_conditioning_scale` | float | 0.8 | ControlNet 条件强度 (**inpaint/canny/depth/pose 模式有效**) |
+| `seed` | int | null | 随机种子 (null 则自动生成) |
+| `num_images` | int | 1 | 生成图片数量 |
+
+**参数详解:**
+
+**`strength` (仅 img2img 模式):**
+- 控制对原图的改变程度
+- 范围: 0.1 - 1.0
+- 0.1-0.3: 轻微变化，保留大部分原图细节
+- 0.4-0.6: 中等变化，平衡原图和创意
+- 0.7-1.0: 大幅变化，几乎完全重绘
+
+**`controlnet_conditioning_scale` (inpaint/canny/depth/pose 模式):**
+- 控制生成结果与原图结构的相似程度
+- 范围: 0.3 - 1.5
+- 0.3-0.6: 更自由发挥，变化较大
+- 0.7-0.9: 平衡原图结构和创意
+- 1.0-1.5: 严格遵循原图结构
+
+**`mask_path` (仅 inpaint 模式):**
+- 黑白蒙版图片，白色区域为需要重绘的部分
+- 必须与原图尺寸相同
+- 支持格式: png, jpg, jpeg
+
+**响应示例:**
+```json
+{
+  "status": "complete",
+  "image_paths": [
+    "/data/outputs/img2img_20240326_123456_abc12345.png"
   ]
 }
 ```
@@ -855,6 +1090,16 @@ echo "$BASE_URL/api/remote/videos"
 | `numSteps` | 4 | 推理步数 |
 | `numImages` | 1 | 1-12 |
 
+#### 图生图参数
+
+| 参数 | 默认值 | 范围 |
+|------|--------|------|
+| `strength` | 0.8 | 0.0-1.0，图生图强度 |
+| `num_inference_steps` | 20 | 推理步数 |
+| `guidance_scale` | 7.0 | CFG 引导强度 |
+| `controlnet_conditioning_scale` | 0.8 | ControlNet 条件强度 |
+| `num_images` | 1 | 生成图片数量 |
+
 #### Retake 参数限制
 
 | 参数 | 限制 |
@@ -864,4 +1109,4 @@ echo "$BASE_URL/api/remote/videos"
 
 ---
 
-*文档生成时间: 2026-03-31*
+*文档生成时间: 2026-04-02*

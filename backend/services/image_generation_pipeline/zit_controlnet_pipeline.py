@@ -52,6 +52,7 @@ class ZitControlNetPipeline:
             torch_dtype=torch.bfloat16,
         )
 
+        self._img2img_pipeline = None
         self._inpaint_pipeline = None
         self._controlnet_pipeline = None
 
@@ -66,8 +67,26 @@ class ZitControlNetPipeline:
         return "cpu"
 
     def _ensure_pipeline_loaded(self, mode: ImageToImageMode) -> None:
-        need_inpaint = mode in ("img2img", "inpaint")
+        need_img2img = mode == "img2img"
+        need_inpaint = mode == "inpaint"
         need_controlnet = mode in ("canny", "depth", "pose")
+        
+        if need_img2img and self._img2img_pipeline is None:
+            from diffusers import ZImageImg2ImgPipeline
+            self._img2img_pipeline = ZImageImg2ImgPipeline.from_pretrained(
+                self._model_path,
+                torch_dtype=torch.bfloat16,
+            )
+            if self._device:
+                try:
+                    self._img2img_pipeline.enable_sequential_cpu_offload(device=self._device)
+                    self._cpu_offload_active = True
+                except Exception:
+                    try:
+                        self._img2img_pipeline.enable_model_cpu_offload(device=self._device)
+                        self._cpu_offload_active = True
+                    except Exception:
+                        self._img2img_pipeline.to(self._device)
         
         if need_inpaint and self._inpaint_pipeline is None:
             from diffusers import ZImageControlNetInpaintPipeline
@@ -166,11 +185,33 @@ class ZitControlNetPipeline:
 
         resized_image = image.convert("RGB").resize((width, height))
 
-        if mode in ("canny", "depth", "pose"):
-            control_image = self._prepare_control_image(image, mode)
-            pipeline = cast(Any, self._controlnet_pipeline)
+        if mode == "img2img":
+            pipeline = cast(Any, self._img2img_pipeline)
             output = pipeline(
                 prompt=prompt,
+                image=resized_image,
+                strength=strength,
+                width=width,
+                height=height,
+                num_inference_steps=num_inference_steps,
+                guidance_scale=guidance_scale,
+                generator=generator,
+                output_type="pil",
+                return_dict=True,
+            )
+        elif mode == "inpaint":
+            pipeline = cast(Any, self._inpaint_pipeline)
+            control_image = self._prepare_control_image(image, mode)
+
+            if mask_image is not None:
+                resized_mask = mask_image.convert("L").resize((width, height))
+            else:
+                raise ValueError("mask_image is required for inpaint mode")
+
+            output = pipeline(
+                prompt=prompt,
+                image=resized_image,
+                mask_image=resized_mask,
                 control_image=control_image.resize((width, height)),
                 width=width,
                 height=height,
@@ -182,20 +223,11 @@ class ZitControlNetPipeline:
                 return_dict=True,
             )
         else:
-            pipeline = cast(Any, self._inpaint_pipeline)
+            pipeline = cast(Any, self._controlnet_pipeline)
             control_image = self._prepare_control_image(image, mode)
-
-            if mode == "inpaint" and mask_image is not None:
-                resized_mask = mask_image.convert("L").resize((width, height))
-            else:
-                resized_mask = PILImageModule.new("L", (width, height), 255)
-
             output = pipeline(
                 prompt=prompt,
-                image=resized_image,
-                mask_image=resized_mask,
                 control_image=control_image.resize((width, height)),
-                strength=strength,
                 width=width,
                 height=height,
                 num_inference_steps=num_inference_steps,
@@ -212,6 +244,8 @@ class ZitControlNetPipeline:
         runtime_device = get_device_type(device)
         self._device = runtime_device
         
+        if self._img2img_pipeline is not None:
+            self._img2img_pipeline.to(runtime_device)
         if self._inpaint_pipeline is not None:
             self._inpaint_pipeline.to(runtime_device)
         if self._controlnet_pipeline is not None:

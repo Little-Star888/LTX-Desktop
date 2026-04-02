@@ -456,20 +456,41 @@ export function ImageToImagePanel({
                 </div>
               )}
 
-              <div>
-                <label className="text-xs font-medium text-zinc-400 mb-1.5 block">
-                  {t('img2img.strength')}: {strength.toFixed(2)}
-                </label>
-                <input
-                  type="range"
-                  min="0.1"
-                  max="1.0"
-                  step="0.05"
-                  value={strength}
-                  onChange={(e) => handleStrengthChange(parseFloat(e.target.value))}
-                  className="w-full accent-purple-500"
-                />
-              </div>
+              {mode === 'img2img' && (
+                <div>
+                  <label className="text-xs font-medium text-zinc-400 mb-1.5 block">
+                    {t('img2img.strength')}: {strength.toFixed(2)}
+                  </label>
+                  <p className="text-xs text-zinc-500 mb-1.5">{t('img2img.strengthHint')}</p>
+                  <input
+                    type="range"
+                    min="0.1"
+                    max="1.0"
+                    step="0.05"
+                    value={strength}
+                    onChange={(e) => handleStrengthChange(parseFloat(e.target.value))}
+                    className="w-full accent-purple-500"
+                  />
+                </div>
+              )}
+
+              {mode !== 'img2img' && (
+                <div>
+                  <label className="text-xs font-medium text-zinc-400 mb-1.5 block">
+                    {t('img2img.controlnetScale')}: {controlnetScale.toFixed(2)}
+                  </label>
+                  <p className="text-xs text-zinc-500 mb-1.5">{t('img2img.controlnetScaleHint')}</p>
+                  <input
+                    type="range"
+                    min="0.3"
+                    max="1.5"
+                    step="0.05"
+                    value={controlnetScale}
+                    onChange={(e) => handleControlnetScaleChange(parseFloat(e.target.value))}
+                    className="w-full accent-purple-500"
+                  />
+                </div>
+              )}
 
               <button
                 onClick={() => setShowAdvanced(!showAdvanced)}
@@ -492,21 +513,6 @@ export function ImageToImagePanel({
                       step="0.5"
                       value={guidanceScale}
                       onChange={(e) => handleGuidanceScaleChange(parseFloat(e.target.value))}
-                      className="w-full accent-purple-500"
-                    />
-                  </div>
-
-                  <div>
-                    <label className="text-xs font-medium text-zinc-400 mb-1.5 block">
-                      {t('img2img.controlnetScale')}: {controlnetScale.toFixed(2)}
-                    </label>
-                    <input
-                      type="range"
-                      min="0.1"
-                      max="1.5"
-                      step="0.05"
-                      value={controlnetScale}
-                      onChange={(e) => handleControlnetScaleChange(parseFloat(e.target.value))}
                       className="w-full accent-purple-500"
                     />
                   </div>
