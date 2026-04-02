@@ -19,6 +19,7 @@ ModelFileType = Literal[
     "text_encoder",
     "zit",
     "zit_controlnet",
+    "sam",
 ]
 
 
@@ -318,6 +319,8 @@ class ImageToImageRequest(BaseModel):
     negative_prompt: str = ""
     seed: int | None = None
     num_images: int = 1
+    auto_mask: bool = False
+    mask_prompt: str | None = None
 
 
 class ImageToImageResponse(BaseModel):

@@ -100,6 +100,13 @@ class ImageGenerationHandler(StateHandlerBase):
             if not mask_path.exists():
                 raise HTTPError(400, f"Mask file not found: {req.mask_path}")
 
+        if req.mode == "inpaint" and not mask_path and not req.auto_mask:
+            raise HTTPError(
+                400,
+                "Inpaint mode requires either 'mask_path' or 'auto_mask=True'. "
+                "Please provide a mask image or enable auto_mask to use SAM for automatic mask generation."
+            )
+
         controlnet_path = resolve_model_path(self.models_dir, self.config.model_download_specs, "zit_controlnet")
         if not controlnet_path.exists():
             raise HTTPError(400, "ControlNet model not downloaded. Please download it from Model Status menu.")
@@ -144,7 +151,34 @@ class ImageGenerationHandler(StateHandlerBase):
             from PIL import Image as PILImage
 
             input_image = PILImage.open(image_path).convert("RGB")
-            mask_image = PILImage.open(mask_path).convert("L") if mask_path else None
+            mask_image: PILImage | None = None
+
+            if mask_path:
+                mask_image = PILImage.open(mask_path).convert("L")
+            elif req.auto_mask and req.mode == "inpaint":
+                sam_path = resolve_model_path(self.models_dir, self.config.model_download_specs, "sam")
+                if not sam_path.exists():
+                    raise HTTPError(
+                        400,
+                        "SAM model not downloaded. Please download 'sam' model from Model Status menu to use auto_mask feature."
+                    )
+
+                self._generation.update_progress("generating_mask", 20, 0, req.num_images)
+                
+                from services.sam_pipeline import Sam3Pipeline
+                sam_pipeline = Sam3Pipeline.create(
+                    model_path=str(sam_path),
+                    device=torch.device(self.config.device),
+                )
+                
+                mask_prompt = req.mask_prompt if req.mask_prompt else req.prompt
+                mask_image = sam_pipeline.generate_mask(input_image, mask_prompt)
+                
+                del sam_pipeline
+                gc.collect()
+                torch.cuda.empty_cache()
+                
+                self._generation.update_progress("inference", 25, 0, req.num_images)
 
             outputs: list[str] = []
             timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
@@ -153,7 +187,7 @@ class ImageGenerationHandler(StateHandlerBase):
                 if self._generation.is_generation_cancelled():
                     raise RuntimeError("Generation was cancelled")
 
-                progress = 15 + int((i / req.num_images) * 70)
+                progress = 25 + int((i / req.num_images) * 65)
                 self._generation.update_progress("inference", progress, i, req.num_images)
 
                 result = controlnet_pipeline.generate_img2img(

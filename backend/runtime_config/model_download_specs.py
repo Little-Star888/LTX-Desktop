@@ -34,6 +34,7 @@ MODEL_FILE_ORDER: tuple[ModelFileType, ...] = (
     "text_encoder",
     "zit",
     "zit_controlnet",
+    "sam",
 )
 
 
@@ -107,6 +108,13 @@ DEFAULT_MODEL_DOWNLOAD_SPECS: dict[ModelFileType, ModelFileDownloadSpec] = {
         is_folder=False,
         repo_id="alibaba-pai/Z-Image-Turbo-Fun-Controlnet-Union-2.1",
         description="Z-Image ControlNet Union 2.0 for img2img/inpaint",
+    ),
+    "sam": ModelFileDownloadSpec(
+        relative_path=Path("sam3.1_multiplex.pt"),
+        expected_size_bytes=3_502_755_717,
+        is_folder=False,
+        repo_id="facebook/sam3.1",
+        description="SAM 3.1 for automatic mask generation in inpaint mode",
     ),
 }
 
