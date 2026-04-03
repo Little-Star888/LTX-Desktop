@@ -101,7 +101,7 @@ RUN pip install --no-cache-dir -i https://pypi.tuna.tsinghua.edu.cn/simple uv
 WORKDIR /app/backend
 
 # Layer 1: lockfile + project metadata (changes rarely)
-COPY backend/pyproject.toml backend/uv.lock ./
+COPY backend/pyproject.toml ./
 
 # Layer 2: source code (changes often)
 COPY backend/ ./
@@ -136,12 +136,6 @@ RUN git config --global \
     git config --global \
     url."file:///vendor/sam3".insteadOf \
     "https://github.com/facebookresearch/sam3.git"
-
-# ── Checkout vendor repos to specific revisions ──────────────
-# Ensure vendor repos match the rev specified in pyproject.toml
-RUN cd /vendor/diffusers && \
-    git fetch origin && \
-    git checkout 01de02e8b4f2cc91df4f3e91cb6535ebcbeb490c
 
 RUN uv sync --no-dev --python 3.13
 
