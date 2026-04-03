@@ -138,6 +138,8 @@ RUN git config --global \
 
 RUN uv sync --no-dev --python 3.13
 
+RUN uv pip install "setuptools<81"
+
 # ── SageAttention (optional CUDA attention speedup) ───────────
 # Already in uv.lock as a pure-Python wheel (sageattention 1.0.6).
 # The C++/CUDA kernels compile lazily at runtime via torch.cpp_extension.
