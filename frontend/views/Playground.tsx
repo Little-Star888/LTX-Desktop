@@ -154,6 +154,7 @@ export function Playground() {
   })
   const [img2ImgPanelKey, setImg2ImgPanelKey] = useState(0)
   const [img2ImgMode, setImg2ImgMode] = useState<ImageToImageMode>('img2img')
+  const [img2ImgMaskPrompt, setImg2ImgMaskPrompt] = useState('')
   const [img2ImgStrength, setImg2ImgStrength] = useState(0.8)
   const [img2ImgNegativePrompt, setImg2ImgNegativePrompt] = useState('')
   const [img2ImgGuidanceScale, setImg2ImgGuidanceScale] = useState(7.0)
@@ -195,6 +196,7 @@ export function Playground() {
         imagePath: img2ImgInput.imagePath,
         prompt,
         mode: img2ImgMode,
+        maskPrompt: img2ImgMaskPrompt,
         strength: img2ImgStrength,
         negativePrompt: img2ImgNegativePrompt,
         numInferenceSteps: img2ImgSteps,
@@ -418,7 +420,12 @@ export function Playground() {
                 processingStatus={img2ImgStatus}
                 processingProgress={img2ImgProgress}
                 mode={img2ImgMode}
-                onModeChange={setImg2ImgMode}
+                onModeChange={(newMode) => {
+                  setImg2ImgMode(newMode)
+                  resetImg2Img()
+                }}
+                maskPrompt={img2ImgMaskPrompt}
+                onMaskPromptChange={setImg2ImgMaskPrompt}
                 strength={img2ImgStrength}
                 onStrengthChange={setImg2ImgStrength}
                 negativePrompt={img2ImgNegativePrompt}

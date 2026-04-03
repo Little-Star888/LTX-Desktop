@@ -116,22 +116,32 @@ RUN rm -f .python-version
 #   - --no-dev:          skip test/debug deps (pytest, pyright, debugpy)
 #   - --python 3.13:     accept any 3.13.x (overrides .python-version pin)
 #
-# The pyproject.toml [tool.uv.sources] maps torch to the CUDA 12.8 wheel
-# index, so uv automatically pulls torch+cu128 on Linux — no system CUDA
+# The pyproject.toml [tool.uv.sources] maps torch to the CUDA 12.9 wheel
+# index, so uv automatically pulls torch+cu129 on Linux — no system CUDA
 # toolkit needed inside the container.
 ENV UV_COMPILE_BYTECODE=1 \
     UV_LINK_MODE=copy \
     UV_INDEX_URL=https://pypi.tuna.tsinghua.edu.cn/simple \
     UV_HTTP_TIMEOUT=300
 
-# ── 预置本地 vendor，替换 GitHub git 源 ──────────────────────
+# ── Copy vendor and setup git URL redirection ───────────────
+# Redirect GitHub URLs to local vendor (preserves official source code)
 COPY vendor/ /vendor/
 RUN git config --global \
     url."file:///vendor/diffusers".insteadOf \
     "https://github.com/huggingface/diffusers.git" && \
     git config --global \
     url."file:///vendor/ltx-2".insteadOf \
-    "https://github.com/Lightricks/LTX-2.git"
+    "https://github.com/Lightricks/LTX-2.git" && \
+    git config --global \
+    url."file:///vendor/sam3".insteadOf \
+    "https://github.com/facebookresearch/sam3.git"
+
+# ── Checkout vendor repos to specific revisions ──────────────
+# Ensure vendor repos match the rev specified in pyproject.toml
+RUN cd /vendor/diffusers && \
+    git fetch origin && \
+    git checkout 01de02e8b4f2cc91df4f3e91cb6535ebcbeb490c
 
 RUN uv sync --no-dev --python 3.13
 

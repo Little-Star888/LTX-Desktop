@@ -559,6 +559,8 @@
     "poseImg2imgDesc": "Preserve pose + original colors",
     "mask": "Mask Image",
     "dropMask": "Drop mask image or click to upload",
+    "maskPrompt": "Segmentation Prompt",
+    "maskPromptHint": "Specify object for SAM to segment, e.g. dress, background, person",
     "strength": "Strength",
     "strengthHint": "Higher = more changes from original",
     "guidanceScale": "Guidance Scale",

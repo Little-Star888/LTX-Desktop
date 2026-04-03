@@ -31,6 +31,8 @@ interface ImageToImagePanelProps {
   processingProgress?: number
   mode?: ImageToImageMode
   onModeChange?: (mode: ImageToImageMode) => void
+  maskPrompt?: string
+  onMaskPromptChange?: (prompt: string) => void
   strength?: number
   onStrengthChange?: (strength: number) => void
   negativePrompt?: string
@@ -64,6 +66,8 @@ export function ImageToImagePanel({
   processingProgress = 0,
   mode: modeProp,
   onModeChange,
+  maskPrompt: maskPromptProp,
+  onMaskPromptChange,
   strength: strengthProp,
   onStrengthChange,
   negativePrompt: negativePromptProp,
@@ -92,6 +96,7 @@ export function ImageToImagePanel({
   const [preprocessError, setPreprocessError] = useState<string | null>(null)
 
   const [localMode, setLocalMode] = useState<ImageToImageMode>('img2img')
+  const [localMaskPrompt, setLocalMaskPrompt] = useState('')
   const [localStrength, setLocalStrength] = useState(0.8)
   const [localNegativePrompt, setLocalNegativePrompt] = useState('')
   const [localGuidanceScale, setLocalGuidanceScale] = useState(7.0)
@@ -101,6 +106,7 @@ export function ImageToImagePanel({
   const [localNumImages, setLocalNumImages] = useState(1)
 
   const mode = modeProp ?? localMode
+  const maskPrompt = maskPromptProp ?? localMaskPrompt
   const strength = strengthProp ?? localStrength
   const negativePrompt = negativePromptProp ?? localNegativePrompt
   const guidanceScale = guidanceScaleProp ?? localGuidanceScale
@@ -478,6 +484,28 @@ export function ImageToImagePanel({
                     value={strength}
                     onChange={(e) => handleStrengthChange(parseFloat(e.target.value))}
                     className="w-full accent-purple-500"
+                  />
+                </div>
+              )}
+
+              {mode === 'inpaint' && (
+                <div>
+                  <label className="text-xs font-medium text-zinc-400 mb-1.5 block">
+                    {t('img2img.maskPrompt')} ({t('common.optional')})
+                  </label>
+                  <p className="text-xs text-zinc-500 mb-1.5">{t('img2img.maskPromptHint')}</p>
+                  <input
+                    type="text"
+                    value={maskPrompt}
+                    onChange={(e) => {
+                      if (onMaskPromptChange) {
+                        onMaskPromptChange(e.target.value)
+                      } else {
+                        setLocalMaskPrompt(e.target.value)
+                      }
+                    }}
+                    placeholder="dress, background, person..."
+                    className="w-full bg-zinc-800 border border-zinc-700 rounded-lg px-3 py-2 text-sm text-white placeholder-zinc-500 focus:outline-none focus:border-purple-500"
                   />
                 </div>
               )}

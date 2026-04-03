@@ -559,6 +559,8 @@
     "poseImg2imgDesc": "保留人物姿态 + 原图色彩",
     "mask": "遮罩图片",
     "dropMask": "拖放遮罩图片或点击上传",
+    "maskPrompt": "分割提示词",
+    "maskPromptHint": "指定 SAM 要分割的对象，如 dress、background、person",
     "strength": "重绘幅度",
     "strengthHint": "值越大变化越大",
     "guidanceScale": "引导比例",
