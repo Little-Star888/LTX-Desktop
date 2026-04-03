@@ -101,7 +101,7 @@ RUN pip install --no-cache-dir -i https://pypi.tuna.tsinghua.edu.cn/simple uv
 WORKDIR /app/backend
 
 # Layer 1: lockfile + project metadata (changes rarely)
-COPY backend/pyproject.toml ./
+COPY backend/pyproject.toml backend/uv.lock ./
 
 # Layer 2: source code (changes often)
 COPY backend/ ./
@@ -116,16 +116,15 @@ RUN rm -f .python-version
 #   - --no-dev:          skip test/debug deps (pytest, pyright, debugpy)
 #   - --python 3.13:     accept any 3.13.x (overrides .python-version pin)
 #
-# The pyproject.toml [tool.uv.sources] maps torch to the CUDA 12.9 wheel
-# index, so uv automatically pulls torch+cu129 on Linux — no system CUDA
+# The pyproject.toml [tool.uv.sources] maps torch to the CUDA 12.8 wheel
+# index, so uv automatically pulls torch+cu128 on Linux — no system CUDA
 # toolkit needed inside the container.
 ENV UV_COMPILE_BYTECODE=1 \
     UV_LINK_MODE=copy \
     UV_INDEX_URL=https://pypi.tuna.tsinghua.edu.cn/simple \
     UV_HTTP_TIMEOUT=300
 
-# ── Copy vendor and setup git URL redirection ───────────────
-# Redirect GitHub URLs to local vendor (preserves official source code)
+# ── 预置本地 vendor，替换 GitHub git 源 ──────────────────────
 COPY vendor/ /vendor/
 RUN git config --global \
     url."file:///vendor/diffusers".insteadOf \
