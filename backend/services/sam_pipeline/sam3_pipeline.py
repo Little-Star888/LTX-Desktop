@@ -51,8 +51,8 @@ class Sam3Pipeline:
                 checkpoint_path=self._model_path,
             )
             
-            # 强制将包括 3.1 新增层在内的所有权重转为 bfloat16 并移至显卡
-            model = model.to(device=self._device, dtype=self._dtype)
+            # 只移动到设备，不转换 dtype，让 autocast 在推理时自动处理
+            model = model.to(self._device)
             model.eval()
 
             try:
@@ -93,10 +93,18 @@ class Sam3Pipeline:
         masks = output.get("masks", [])
         scores = output.get("scores",[])
 
-        if not masks:
+        if isinstance(masks, torch.Tensor):
+            if masks.numel() == 0:
+                return PILImageModule.new("L", image.size, 0)
+        elif not masks:
             return PILImageModule.new("L", image.size, 0)
 
-        best_idx = int(np.argmax(scores)) if scores else 0
+        if isinstance(scores, torch.Tensor):
+            best_idx = int(scores.argmax().item())
+        elif scores:
+            best_idx = int(np.argmax(scores))
+        else:
+            best_idx = 0
         best_mask = masks[best_idx]
 
         if isinstance(best_mask, torch.Tensor):
@@ -124,8 +132,18 @@ class Sam3Pipeline:
             inference_state = self._processor.set_image(image)
             output = self._processor.set_point_prompt(state=inference_state, points=[[point_x, point_y]])
         masks, scores = output.get("masks", []), output.get("scores", [])
-        if not masks: return PILImageModule.new("L", image.size, 0)
-        best_mask = masks[int(np.argmax(scores))] if scores else masks[0]
+        if isinstance(masks, torch.Tensor):
+            if masks.numel() == 0:
+                return PILImageModule.new("L", image.size, 0)
+        elif not masks:
+            return PILImageModule.new("L", image.size, 0)
+        if isinstance(scores, torch.Tensor):
+            best_idx = int(scores.argmax().item())
+        elif scores:
+            best_idx = int(np.argmax(scores))
+        else:
+            best_idx = 0
+        best_mask = masks[best_idx]
         mask_np = best_mask.detach().cpu().numpy() if isinstance(best_mask, torch.Tensor) else np.array(best_mask)
         mask_image = PILImageModule.fromarray((mask_np * 255).astype(np.uint8).squeeze(), mode="L")
         return mask_image.resize(image.size, PILImageModule.NEAREST)
@@ -138,8 +156,18 @@ class Sam3Pipeline:
             inference_state = self._processor.set_image(image)
             output = self._processor.set_box_prompt(state=inference_state, boxes=[[box_x1, box_y1, box_x2, box_y2]])
         masks, scores = output.get("masks", []), output.get("scores", [])
-        if not masks: return PILImageModule.new("L", image.size, 0)
-        best_mask = masks[int(np.argmax(scores))] if scores else masks[0]
+        if isinstance(masks, torch.Tensor):
+            if masks.numel() == 0:
+                return PILImageModule.new("L", image.size, 0)
+        elif not masks:
+            return PILImageModule.new("L", image.size, 0)
+        if isinstance(scores, torch.Tensor):
+            best_idx = int(scores.argmax().item())
+        elif scores:
+            best_idx = int(np.argmax(scores))
+        else:
+            best_idx = 0
+        best_mask = masks[best_idx]
         mask_np = best_mask.detach().cpu().numpy() if isinstance(best_mask, torch.Tensor) else np.array(best_mask)
         mask_image = PILImageModule.fromarray((mask_np * 255).astype(np.uint8).squeeze(), mode="L")
         return mask_image.resize(image.size, PILImageModule.NEAREST)
