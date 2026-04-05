@@ -109,11 +109,11 @@ export function ImageToImagePanel({
 
   const [localMode, setLocalMode] = useState<ImageToImageMode>('img2img')
   const [localMaskPrompt, setLocalMaskPrompt] = useState('')
-  const [localStrength, setLocalStrength] = useState(0.8)
+  const [localStrength, setLocalStrength] = useState(0.9)
   const [localNegativePrompt, setLocalNegativePrompt] = useState('')
-  const [localGuidanceScale, setLocalGuidanceScale] = useState(7.0)
-  const [localControlnetScale, setLocalControlnetScale] = useState(0.8)
-  const [localNumInferenceSteps, setLocalNumInferenceSteps] = useState(20)
+  const [localGuidanceScale, setLocalGuidanceScale] = useState(0.5)
+  const [localControlnetScale, setLocalControlnetScale] = useState(0.5)
+  const [localNumInferenceSteps, setLocalNumInferenceSteps] = useState(8)
   const [localSeed, setLocalSeed] = useState<number | null>(null)
   const [localNumImages, setLocalNumImages] = useState(1)
 
@@ -632,11 +632,12 @@ export function ImageToImagePanel({
                     <label className="text-xs font-medium text-zinc-400 mb-1.5 block">
                       {t('img2img.guidanceScale')}: {guidanceScale.toFixed(1)}
                     </label>
+                    <p className="text-xs text-zinc-500 mb-1.5">{t('img2img.guidanceScaleHint')}</p>
                     <input
                       type="range"
-                      min="1"
-                      max="15"
-                      step="0.5"
+                      min="0"
+                      max="2"
+                      step="0.1"
                       value={guidanceScale}
                       onChange={(e) => handleGuidanceScaleChange(parseFloat(e.target.value))}
                       className="w-full accent-purple-500"
@@ -647,10 +648,11 @@ export function ImageToImagePanel({
                     <label className="text-xs font-medium text-zinc-400 mb-1.5 block">
                       {t('img2img.inferenceSteps')}: {numInferenceSteps}
                     </label>
+                    <p className="text-xs text-zinc-500 mb-1.5">{t('img2img.inferenceStepsHint')}</p>
                     <input
                       type="range"
-                      min="10"
-                      max="50"
+                      min="4"
+                      max="20"
                       step="1"
                       value={numInferenceSteps}
                       onChange={(e) => handleNumInferenceStepsChange(parseInt(e.target.value))}
