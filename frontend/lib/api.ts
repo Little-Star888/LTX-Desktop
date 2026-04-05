@@ -240,6 +240,13 @@ export const api = {
       body: JSON.stringify(params),
     })
   },
+
+  async previewMask(params: { image_path: string; prompt: string; mask_prompt?: string }) {
+    return apiFetchJson<{ mask_path: string; keyword: string; coverage: number }>('/api/preview-mask', {
+      method: 'POST',
+      body: JSON.stringify(params),
+    })
+  },
 }
 
 export { apiFetch as backendFetch }

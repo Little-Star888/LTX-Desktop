@@ -10,6 +10,9 @@ from pathlib import Path
 from threading import RLock
 from typing import TYPE_CHECKING
 
+import torch
+from PIL import Image as PILImage
+
 from _routes._errors import HTTPError
 from api_types import GenerateImageRequest, GenerateImageResponse, ImageToImageRequest, ImageToImageResponse
 from handlers.base import StateHandlerBase
@@ -156,8 +159,37 @@ class ImageGenerationHandler(StateHandlerBase):
                     device=torch.device(self.config.device),
                 )
                 
-                mask_prompt = req.mask_prompt if req.mask_prompt else req.prompt
+                if req.mask_prompt:
+                    mask_prompt = req.mask_prompt
+                else:
+                    from services.keyword_extractor import KeywordExtractor
+                    keyword_extractor_path = resolve_model_path(
+                        self.config.default_models_dir,
+                        self.config.model_download_specs,
+                        "keyword_extractor",
+                    )
+                    extractor = KeywordExtractor.get_instance(
+                        device=self.config.device,
+                        model_path=keyword_extractor_path,
+                    )
+                    mask_prompt = extractor.extract_keyword(req.prompt)
+                    extractor.unload()
+                
                 mask_image = sam_pipeline.generate_mask(input_image, mask_prompt)
+                
+                import numpy as np
+                mask_arr = np.array(mask_image)
+                unique_values = np.unique(mask_arr)
+                non_zero_pixels = np.count_nonzero(mask_arr)
+                total_pixels = mask_arr.size
+                coverage = non_zero_pixels / total_pixels * 100
+                
+                if non_zero_pixels == 0:
+                    logger.warning(f"SAM failed to segment '{mask_prompt}', using full image mask")
+                elif coverage > 90:
+                    logger.info(f"SAM segmented '{mask_prompt}' covering {coverage:.1f}% of image (near full mask)")
+                else:
+                    logger.info(f"SAM segmented '{mask_prompt}' - coverage: {coverage:.1f}%, non-zero pixels: {non_zero_pixels}")
                 
                 del sam_pipeline
                 gc.collect()
@@ -319,3 +351,87 @@ class ImageGenerationHandler(StateHandlerBase):
                 logger.info("Image generation cancelled by user")
                 return GenerateImageResponse(status="cancelled")
             raise HTTPError(500, str(e)) from e
+
+    def preview_mask(
+        self,
+        image_path: str,
+        prompt: str,
+        mask_prompt: str | None = None,
+    ) -> tuple[str, str, float]:
+        """Preview SAM segmentation mask.
+        
+        Args:
+            image_path: Path to the input image
+            prompt: The generation prompt
+            mask_prompt: Optional explicit mask prompt
+            
+        Returns:
+            Tuple of (mask_path, keyword, coverage_percent)
+        """
+        import gc
+        import numpy as np
+        
+        input_image = PILImage.open(image_path).convert("RGB")
+        
+        sam_path = resolve_model_path(self.config.default_models_dir, self.config.model_download_specs, "sam")
+        if not sam_path.exists():
+            raise HTTPError(
+                400,
+                "SAM model not downloaded. Please download 'sam' model from Model Status menu."
+            )
+        
+        from services.sam_pipeline import Sam3Pipeline
+        sam_pipeline = Sam3Pipeline.create(
+            model_path=str(sam_path),
+            device=torch.device(self.config.device),
+        )
+        
+        if mask_prompt:
+            keyword = mask_prompt
+        else:
+            from services.keyword_extractor import KeywordExtractor
+            keyword_extractor_path = resolve_model_path(
+                self.config.default_models_dir,
+                self.config.model_download_specs,
+                "keyword_extractor",
+            )
+            extractor = KeywordExtractor.get_instance(
+                device=self.config.device,
+                model_path=keyword_extractor_path,
+            )
+            keyword = extractor.extract_keyword(prompt)
+            extractor.unload()
+        
+        mask_image = sam_pipeline.generate_mask(input_image, keyword, fallback_to_full_mask=False)
+        
+        del sam_pipeline
+        gc.collect()
+        torch.cuda.empty_cache()
+        
+        mask_arr = np.array(mask_image)
+        total_pixels = mask_arr.size
+        non_zero_pixels = np.count_nonzero(mask_arr)
+        coverage = (non_zero_pixels / total_pixels) * 100
+        
+        overlay = input_image.copy().convert("RGBA")
+        overlay_arr = np.array(overlay)
+        
+        red_mask = np.zeros_like(overlay_arr)
+        red_mask[:, :, 0] = 255
+        red_mask[:, :, 3] = (mask_arr > 128).astype(np.uint8) * 128
+        
+        overlay_arr = overlay_arr.astype(np.float32) / 255
+        red_mask = red_mask.astype(np.float32) / 255
+        
+        blended = overlay_arr * (1 - red_mask[:, :, 3:4] * 0.5) + red_mask * red_mask[:, :, 3:4]
+        blended = (blended * 255).astype(np.uint8)
+        
+        blended_image = PILImage.fromarray(blended)
+        
+        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+        mask_path = self.config.outputs_dir / f"mask_preview_{timestamp}_{uuid.uuid4().hex[:8]}.png"
+        blended_image.save(str(mask_path))
+        
+        logger.info(f"Mask preview generated - keyword: '{keyword}', coverage: {coverage:.1f}%")
+        
+        return str(mask_path), keyword, coverage

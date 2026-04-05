@@ -75,12 +75,18 @@ class Sam3Pipeline:
         self,
         image: PILImage,
         prompt: str,
+        fallback_to_full_mask: bool = True,
     ) -> PILImage:
-        """Generate a mask image from text prompt."""
+        """Generate a mask image from text prompt.
+        
+        Args:
+            image: Input image
+            prompt: Text prompt for SAM segmentation
+            fallback_to_full_mask: If True, return full image mask when SAM fails to segment anything
+        """
         self._ensure_loaded()
         import numpy as np
 
-        # 使用 autocast 自动对齐输入图像精度
         autocast_ctx = torch.autocast(device_type=self._device.type, dtype=self._dtype) if self._device.type == "cuda" else contextlib.nullcontext()
 
         with autocast_ctx:
@@ -95,8 +101,12 @@ class Sam3Pipeline:
 
         if isinstance(masks, torch.Tensor):
             if masks.numel() == 0:
+                if fallback_to_full_mask:
+                    return PILImageModule.new("L", image.size, 255)
                 return PILImageModule.new("L", image.size, 0)
         elif not masks:
+            if fallback_to_full_mask:
+                return PILImageModule.new("L", image.size, 255)
             return PILImageModule.new("L", image.size, 0)
 
         if isinstance(scores, torch.Tensor):
@@ -108,15 +118,17 @@ class Sam3Pipeline:
         best_mask = masks[best_idx]
 
         if isinstance(best_mask, torch.Tensor):
-            mask_np = best_mask.detach().cpu().numpy()
+            mask_np = best_mask.detach().float().cpu().numpy()
         else:
-            mask_np = np.array(best_mask)
-
-        if mask_np.dtype != np.uint8:
-            mask_np = (mask_np * 255).astype(np.uint8)
+            mask_np = np.array(best_mask, dtype=np.float32)
 
         if mask_np.ndim == 3:
             mask_np = mask_np.squeeze()
+
+        mask_np = (mask_np > 0.5).astype(np.uint8) * 255
+
+        if np.count_nonzero(mask_np) == 0 and fallback_to_full_mask:
+            return PILImageModule.new("L", image.size, 255)
 
         mask_image = PILImageModule.fromarray(mask_np, mode="L")
         if mask_image.size != image.size:
@@ -144,8 +156,11 @@ class Sam3Pipeline:
         else:
             best_idx = 0
         best_mask = masks[best_idx]
-        mask_np = best_mask.detach().cpu().numpy() if isinstance(best_mask, torch.Tensor) else np.array(best_mask)
-        mask_image = PILImageModule.fromarray((mask_np * 255).astype(np.uint8).squeeze(), mode="L")
+        mask_np = best_mask.detach().float().cpu().numpy() if isinstance(best_mask, torch.Tensor) else np.array(best_mask, dtype=np.float32)
+        if mask_np.ndim == 3:
+            mask_np = mask_np.squeeze()
+        mask_np = (mask_np > 0.5).astype(np.uint8) * 255
+        mask_image = PILImageModule.fromarray(mask_np, mode="L")
         return mask_image.resize(image.size, PILImageModule.NEAREST)
 
     def generate_mask_from_box(self, image: PILImage, box_x1: int, box_y1: int, box_x2: int, box_y2: int) -> PILImage:
@@ -168,6 +183,9 @@ class Sam3Pipeline:
         else:
             best_idx = 0
         best_mask = masks[best_idx]
-        mask_np = best_mask.detach().cpu().numpy() if isinstance(best_mask, torch.Tensor) else np.array(best_mask)
-        mask_image = PILImageModule.fromarray((mask_np * 255).astype(np.uint8).squeeze(), mode="L")
+        mask_np = best_mask.detach().float().cpu().numpy() if isinstance(best_mask, torch.Tensor) else np.array(best_mask, dtype=np.float32)
+        if mask_np.ndim == 3:
+            mask_np = mask_np.squeeze()
+        mask_np = (mask_np > 0.5).astype(np.uint8) * 255
+        mask_image = PILImageModule.fromarray(mask_np, mode="L")
         return mask_image.resize(image.size, PILImageModule.NEAREST)

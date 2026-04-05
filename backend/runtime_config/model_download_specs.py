@@ -35,6 +35,7 @@ MODEL_FILE_ORDER: tuple[ModelFileType, ...] = (
     "zit",
     "zit_controlnet",
     "sam",
+    "keyword_extractor",
 )
 
 
@@ -115,6 +116,13 @@ DEFAULT_MODEL_DOWNLOAD_SPECS: dict[ModelFileType, ModelFileDownloadSpec] = {
         is_folder=False,
         repo_id="facebook/sam3",
         description="SAM 3.0 for automatic mask generation in inpaint mode",
+    ),
+    "keyword_extractor": ModelFileDownloadSpec(
+        relative_path=Path("Qwen3-0.6B"),
+        expected_size_bytes=1_500_000_000,
+        is_folder=True,
+        repo_id="Qwen/Qwen3-0.6B",
+        description="Qwen 3 0.6B for keyword extraction in inpaint mode",
     ),
 }
 

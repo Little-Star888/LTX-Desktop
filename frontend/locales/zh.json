@@ -561,6 +561,7 @@
     "dropMask": "拖放遮罩图片或点击上传",
     "maskPrompt": "分割提示词",
     "maskPromptHint": "指定 SAM 要分割的对象，如 dress、background、person",
+    "inpaintHint": "描述你想要修改的内容，系统会自动识别并分割目标区域。如需精确控制，可在高级设置中指定分割对象。",
     "strength": "重绘幅度",
     "strengthHint": "值越大变化越大",
     "guidanceScale": "引导比例",
@@ -579,6 +580,11 @@
     "seed": "随机种子",
     "seedPlaceholder": "留空使用随机种子",
     "randomSeed": "随机种子",
-    "numImages": "生成数量"
+    "numImages": "生成数量",
+    "previewMask": "预览分割区域",
+    "previewingMask": "正在生成预览...",
+    "detectedKeyword": "识别关键词",
+    "coverage": "覆盖范围",
+    "clearPreview": "清除预览"
   }
 }

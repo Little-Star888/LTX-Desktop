@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from fastapi import APIRouter, Depends
 
-from api_types import ImageToImageRequest, ImageToImageResponse
+from api_types import ImageToImageRequest, ImageToImageResponse, PreviewMaskRequest, PreviewMaskResponse
 from state import get_state_service
 from app_handler import AppHandler
 
@@ -18,3 +18,21 @@ def route_image_to_image(
 ) -> ImageToImageResponse:
     """POST /api/image-to-image - Generate image from image with ControlNet."""
     return handler.image_generation.generate_img2img(req)
+
+
+@router.post("/preview-mask", response_model=PreviewMaskResponse)
+def route_preview_mask(
+    req: PreviewMaskRequest,
+    handler: AppHandler = Depends(get_state_service),
+) -> PreviewMaskResponse:
+    """POST /api/preview-mask - Preview SAM segmentation mask."""
+    mask_path, keyword, coverage = handler.image_generation.preview_mask(
+        image_path=req.image_path,
+        prompt=req.prompt,
+        mask_prompt=req.mask_prompt,
+    )
+    return PreviewMaskResponse(
+        mask_path=mask_path,
+        keyword=keyword,
+        coverage=coverage,
+    )

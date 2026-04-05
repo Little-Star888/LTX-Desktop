@@ -20,6 +20,7 @@ ModelFileType = Literal[
     "zit",
     "zit_controlnet",
     "sam",
+    "keyword_extractor",
 ]
 
 
@@ -324,3 +325,15 @@ class ImageToImageRequest(BaseModel):
 class ImageToImageResponse(BaseModel):
     status: str
     image_paths: list[str] | None = None
+
+
+class PreviewMaskRequest(BaseModel):
+    image_path: str
+    prompt: str
+    mask_prompt: str | None = None
+
+
+class PreviewMaskResponse(BaseModel):
+    mask_path: str
+    keyword: str
+    coverage: float

@@ -1,7 +1,7 @@
 import { useState, useRef, useCallback, useEffect } from 'react'
 import {
   Upload, Loader2, Image as ImageIcon, Sparkles,
-  RefreshCw, Download, AlertCircle, Trash2, Settings2,
+  RefreshCw, Download, AlertCircle, Trash2, Settings2, Eye,
 } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import { logger } from '../lib/logger'
@@ -48,6 +48,12 @@ interface ImageToImagePanelProps {
   numImages?: number
   onNumImagesChange?: (num: number) => void
   outputImageUrl?: string | null
+  prompt?: string
+  isPreviewingMask?: boolean
+  previewMaskResult?: { maskUrl: string; keyword: string; coverage: number } | null
+  previewMaskError?: string | null
+  onPreviewMask?: () => void
+  onClearPreviewMask?: () => void
   onChange?: (data: {
     imageUrl: string | null
     imagePath: string | null
@@ -83,6 +89,12 @@ export function ImageToImagePanel({
   numImages: numImagesProp,
   onNumImagesChange,
   outputImageUrl,
+  prompt,
+  isPreviewingMask,
+  previewMaskResult,
+  previewMaskError,
+  onPreviewMask,
+  onClearPreviewMask,
   onChange,
 }: ImageToImagePanelProps) {
   const { t } = useTranslation()
@@ -489,24 +501,67 @@ export function ImageToImagePanel({
               )}
 
               {mode === 'inpaint' && (
-                <div>
-                  <label className="text-xs font-medium text-zinc-400 mb-1.5 block">
-                    {t('img2img.maskPrompt')} ({t('common.optional')})
-                  </label>
-                  <p className="text-xs text-zinc-500 mb-1.5">{t('img2img.maskPromptHint')}</p>
-                  <input
-                    type="text"
-                    value={maskPrompt}
-                    onChange={(e) => {
-                      if (onMaskPromptChange) {
-                        onMaskPromptChange(e.target.value)
-                      } else {
-                        setLocalMaskPrompt(e.target.value)
-                      }
-                    }}
-                    placeholder="dress, background, person..."
-                    className="w-full bg-zinc-800 border border-zinc-700 rounded-lg px-3 py-2 text-sm text-white placeholder-zinc-500 focus:outline-none focus:border-purple-500"
-                  />
+                <div className="space-y-3">
+                  <div className="p-3 bg-zinc-800/50 rounded-lg border border-zinc-700">
+                    <p className="text-xs text-zinc-400">
+                      {t('img2img.inpaintHint')}
+                    </p>
+                  </div>
+                  
+                  <button
+                    onClick={onPreviewMask}
+                    disabled={isPreviewingMask || !imagePath || !prompt?.trim()}
+                    className="w-full px-3 py-2 text-xs font-medium rounded-lg bg-purple-600 text-white hover:bg-purple-700 disabled:bg-zinc-700 disabled:text-zinc-500 disabled:cursor-not-allowed transition-colors flex items-center justify-center gap-2"
+                  >
+                    {isPreviewingMask ? (
+                      <>
+                        <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                        {t('img2img.previewingMask')}
+                      </>
+                    ) : (
+                      <>
+                        <Eye className="h-3.5 w-3.5" />
+                        {t('img2img.previewMask')}
+                      </>
+                    )}
+                  </button>
+                  
+                  {previewMaskError && (
+                    <div className="p-3 bg-red-500/10 border border-red-500/20 rounded-lg">
+                      <div className="flex items-center gap-2">
+                        <AlertCircle className="h-4 w-4 text-red-400" />
+                        <span className="text-xs text-red-400">{previewMaskError}</span>
+                      </div>
+                    </div>
+                  )}
+                  
+                  {previewMaskResult && (
+                    <div className="space-y-2">
+                      <div className="flex items-center justify-between">
+                        <div className="flex items-center gap-2">
+                          <span className="text-xs text-zinc-400">{t('img2img.detectedKeyword')}:</span>
+                          <span className="text-xs font-medium text-purple-400">{previewMaskResult.keyword}</span>
+                        </div>
+                        <div className="flex items-center gap-2">
+                          <span className="text-xs text-zinc-400">{t('img2img.coverage')}:</span>
+                          <span className="text-xs font-medium text-zinc-300">{previewMaskResult.coverage.toFixed(1)}%</span>
+                        </div>
+                      </div>
+                      <div className="relative rounded-lg overflow-auto bg-black max-h-48">
+                        <img
+                          src={previewMaskResult.maskUrl}
+                          alt="Mask Preview"
+                          className="w-full h-auto object-contain"
+                        />
+                      </div>
+                      <button
+                        onClick={onClearPreviewMask}
+                        className="w-full px-3 py-1.5 text-xs text-zinc-400 hover:text-white transition-colors"
+                      >
+                        {t('img2img.clearPreview')}
+                      </button>
+                    </div>
+                  )}
                 </div>
               )}
 
@@ -538,6 +593,28 @@ export function ImageToImagePanel({
 
               {showAdvanced && (
                 <div className="space-y-3 pl-2 border-l-2 border-zinc-700">
+                  {mode === 'inpaint' && (
+                    <div>
+                      <label className="text-xs font-medium text-zinc-400 mb-1.5 block">
+                        {t('img2img.maskPrompt')} ({t('common.optional')})
+                      </label>
+                      <p className="text-xs text-zinc-500 mb-1.5">{t('img2img.maskPromptHint')}</p>
+                      <input
+                        type="text"
+                        value={maskPrompt}
+                        onChange={(e) => {
+                          if (onMaskPromptChange) {
+                            onMaskPromptChange(e.target.value)
+                          } else {
+                            setLocalMaskPrompt(e.target.value)
+                          }
+                        }}
+                        placeholder="dress, background, person..."
+                        className="w-full px-3 py-2 text-xs bg-zinc-800 border border-zinc-700 rounded-lg text-white placeholder-zinc-500 focus:outline-none focus:border-purple-500"
+                      />
+                    </div>
+                  )}
+
                   <div>
                     <label className="text-xs font-medium text-zinc-400 mb-1.5 block">
                       {t('img2img.negativePrompt')}

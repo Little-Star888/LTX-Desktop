@@ -561,6 +561,7 @@
     "dropMask": "Drop mask image or click to upload",
     "maskPrompt": "Segmentation Prompt",
     "maskPromptHint": "Specify object for SAM to segment, e.g. dress, background, person",
+    "inpaintHint": "Describe what you want to change. The system will automatically identify and segment the target area. For precise control, specify the segmentation target in advanced settings.",
     "strength": "Strength",
     "strengthHint": "Higher = more changes from original",
     "guidanceScale": "Guidance Scale",
@@ -579,6 +580,11 @@
     "seed": "Seed",
     "seedPlaceholder": "Leave empty for random seed",
     "randomSeed": "Random Seed",
-    "numImages": "Number of Images"
+    "numImages": "Number of Images",
+    "previewMask": "Preview Segmentation",
+    "previewingMask": "Generating preview...",
+    "detectedKeyword": "Detected Keyword",
+    "coverage": "Coverage",
+    "clearPreview": "Clear Preview"
   }
 }

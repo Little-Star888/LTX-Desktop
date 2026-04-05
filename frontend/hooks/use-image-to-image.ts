@@ -32,12 +32,22 @@ export interface ImageToImageResult {
   imageUrls: string[]
 }
 
+export interface PreviewMaskResult {
+  maskPath: string
+  maskUrl: string
+  keyword: string
+  coverage: number
+}
+
 interface UseImageToImageState {
   isGenerating: boolean
   status: string
   progress: number
   error: string | null
   result: ImageToImageResult | null
+  isPreviewingMask: boolean
+  previewMaskResult: PreviewMaskResult | null
+  previewMaskError: string | null
 }
 
 interface GenerationProgress {
@@ -70,6 +80,9 @@ export function useImageToImage() {
     progress: 0,
     error: null,
     result: null,
+    isPreviewingMask: false,
+    previewMaskResult: null,
+    previewMaskError: null,
   })
 
   const progressIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null)
@@ -85,6 +98,9 @@ export function useImageToImage() {
       progress: 0,
       error: null,
       result: null,
+      isPreviewingMask: false,
+      previewMaskResult: null,
+      previewMaskError: null,
     })
 
     lastPhaseRef.current = ''
@@ -167,6 +183,9 @@ export function useImageToImage() {
             imagePaths: data.image_paths,
             imageUrls,
           },
+          isPreviewingMask: false,
+          previewMaskResult: null,
+          previewMaskError: null,
         })
         return
       }
@@ -179,6 +198,9 @@ export function useImageToImage() {
         progress: 0,
         error: errorMsg,
         result: null,
+        isPreviewingMask: false,
+        previewMaskResult: null,
+        previewMaskError: null,
       })
     } catch (error) {
       if (progressIntervalRef.current) {
@@ -193,7 +215,67 @@ export function useImageToImage() {
         progress: 0,
         error: message,
         result: null,
+        isPreviewingMask: false,
+        previewMaskResult: null,
+        previewMaskError: null,
       })
+    }
+  }, [])
+
+  const previewMask = useCallback(async (params: { imagePath: string; prompt: string; maskPrompt?: string }) => {
+    if (!params.imagePath || !params.prompt.trim()) return
+
+    setState(prev => ({
+      ...prev,
+      isPreviewingMask: true,
+      previewMaskResult: null,
+      previewMaskError: null,
+    }))
+
+    try {
+      const response = await backendFetch('/api/preview-mask', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          image_path: params.imagePath,
+          prompt: params.prompt,
+          mask_prompt: params.maskPrompt,
+        }),
+      })
+
+      const data = await response.json()
+
+      if (response.ok && data.mask_path) {
+        setState(prev => ({
+          ...prev,
+          isPreviewingMask: false,
+          previewMaskResult: {
+            maskPath: data.mask_path,
+            maskUrl: pathToUrl(data.mask_path),
+            keyword: data.keyword,
+            coverage: data.coverage,
+          },
+          previewMaskError: null,
+        }))
+      } else {
+        const errorMsg = data.error || data.detail || 'Failed to generate mask preview'
+        logger.error(`Mask preview failed: ${errorMsg}`)
+        setState(prev => ({
+          ...prev,
+          isPreviewingMask: false,
+          previewMaskResult: null,
+          previewMaskError: errorMsg,
+        }))
+      }
+    } catch (error) {
+      const message = (error as Error).message || 'Unknown error'
+      logger.error(`Mask preview error: ${message}`)
+      setState(prev => ({
+        ...prev,
+        isPreviewingMask: false,
+        previewMaskResult: null,
+        previewMaskError: message,
+      }))
     }
   }, [])
 
@@ -208,16 +290,32 @@ export function useImageToImage() {
       progress: 0,
       error: null,
       result: null,
+      isPreviewingMask: false,
+      previewMaskResult: null,
+      previewMaskError: null,
     })
+  }, [])
+
+  const clearPreviewMask = useCallback(() => {
+    setState(prev => ({
+      ...prev,
+      previewMaskResult: null,
+      previewMaskError: null,
+    }))
   }, [])
 
   return {
     generate,
     reset,
+    previewMask,
+    clearPreviewMask,
     isGenerating: state.isGenerating,
     status: state.status,
     progress: state.progress,
     error: state.error,
     result: state.result,
+    isPreviewingMask: state.isPreviewingMask,
+    previewMaskResult: state.previewMaskResult,
+    previewMaskError: state.previewMaskError,
   }
 }

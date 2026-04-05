@@ -119,11 +119,16 @@ export function Playground() {
   const {
     generate: generateImg2Img,
     reset: resetImg2Img,
+    previewMask,
+    clearPreviewMask,
     isGenerating: isImg2ImgGenerating,
     status: img2ImgStatus,
     progress: img2ImgProgress,
     error: img2ImgError,
     result: img2ImgResult,
+    isPreviewingMask,
+    previewMaskResult,
+    previewMaskError,
   } = useImageToImage()
 
   const [retakeInput, setRetakeInput] = useState({
@@ -441,6 +446,20 @@ export function Playground() {
                 numImages={img2ImgNumImages}
                 onNumImagesChange={setImg2ImgNumImages}
                 outputImageUrl={img2ImgResult?.imageUrls?.[0] || null}
+                prompt={prompt}
+                isPreviewingMask={isPreviewingMask}
+                previewMaskResult={previewMaskResult}
+                previewMaskError={previewMaskError}
+                onPreviewMask={() => {
+                  if (img2ImgInput.imagePath) {
+                    previewMask({
+                      imagePath: img2ImgInput.imagePath,
+                      prompt,
+                      maskPrompt: img2ImgMaskPrompt || undefined,
+                    })
+                  }
+                }}
+                onClearPreviewMask={clearPreviewMask}
                 onChange={setImg2ImgInput}
               />
             )}
