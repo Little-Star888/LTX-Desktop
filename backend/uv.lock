@@ -587,7 +587,7 @@ requires-dist = [
     { name = "python-multipart", specifier = ">=0.0.9" },
     { name = "requests", marker = "extra == 'test'", specifier = ">=2.31" },
     { name = "sageattention", marker = "sys_platform != 'darwin'", specifier = ">=1.0.0" },
-    { name = "sam3", git = "https://github.com/facebookresearch/sam3.git?branch=sam3.1" },
+    { name = "sam3", git = "https://github.com/facebookresearch/sam3.git" },
     { name = "sentencepiece", specifier = ">=0.1.99" },
     { name = "setuptools", specifier = "<81" },
     { name = "torch", marker = "sys_platform != 'linux' and sys_platform != 'win32'", specifier = ">=2.3.0" },
@@ -1441,7 +1441,7 @@ wheels = [
 [[package]]
 name = "sam3"
 version = "0.1.0"
-source = { git = "https://github.com/facebookresearch/sam3.git?branch=sam3.1#20dba30a35a497606b06cf241f5b5605ea10e77e" }
+source = { git = "https://github.com/facebookresearch/sam3.git#bfbed072a07a6a52c8d5fdc75a7a186251a835b1" }
 dependencies = [
     { name = "ftfy" },
     { name = "huggingface-hub" },
