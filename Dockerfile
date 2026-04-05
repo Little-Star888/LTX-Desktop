@@ -136,7 +136,8 @@ RUN git config --global \
     url."file:///vendor/sam3".insteadOf \
     "https://github.com/facebookresearch/sam3.git"
 
-RUN uv sync --no-dev --python 3.13
+ENV UV_INDEX_URL=https://pypi.tuna.tsinghua.edu.cn/simple
+RUN uv sync --no-dev --python 3.13 --index-url https://pypi.tuna.tsinghua.edu.cn/simple --extra-index-url https://download.pytorch.org/whl/cu128
 
 RUN uv pip install "setuptools<81"
 

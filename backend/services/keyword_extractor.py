@@ -75,32 +75,35 @@ class KeywordExtractor:
     _model = None
     _tokenizer = None
 
-    EXTRACTION_PROMPT = """You are a keyword extraction assistant. Extract the main object/subject from the image editing request. Output ONLY a single English word representing the object. Do not output anything else.
+    EXTRACTION_PROMPT = """从图像编辑请求中提取主要对象，并翻译成英文。严格只输出一个英文单词。
 
-Examples:
-Request: "把裙子改成红色"
-Output: dress
+示例：
+请求: "把裙子改成红色"
+输出: dress
 
-Request: "Change the background to a beach"
-Output: background
+请求: "Change the background to a beach"
+输出: background
 
-Request: "给人物添加帽子"
-Output: person
+请求: "给人物添加帽子"
+输出: person
 
-Request: "把头发染成金色"
-Output: hair
+请求: "把头发染成金色"
+输出: hair
 
-Request: "Replace the car with a bicycle"
-Output: car
+请求: "Replace the car with a bicycle"
+输出: car
 
-Request: "Make the sky more blue"
-Output: sky
+请求: "Make the sky more blue"
+输出: sky
 
-Request: "修改衣服颜色"
-Output: clothes
+请求: "修改衣服颜色"
+输出: clothes
 
-Request: "{prompt}"
-Output:"""
+请求: "衣服换成黑色的"
+输出: clothes
+
+请求: "{prompt}"
+输出:"""
 
     @classmethod
     def get_instance(
@@ -194,7 +197,7 @@ Output:"""
         ).strip()
         
         generated_text = generated_text.split("\n")[0].strip()
-        generated_text = generated_text.split(".")[0].strip()
+        generated_text = generated_text.strip()
         
         if contains_chinese(generated_text):
             if generated_text in CHINESE_TO_ENGLISH:
@@ -209,7 +212,7 @@ Output:"""
                 else:
                     logger.warning(f"Keyword extraction returned Chinese '{generated_text}', translation failed")
         
-        if not generated_text or len(generated_text) > 30:
+        if not generated_text or len(generated_text) < 3 or len(generated_text) > 30:
             logger.warning(f"Keyword extraction may have failed, got: '{generated_text}'")
             return prompt
         
@@ -248,9 +251,12 @@ English:"""
         ).strip()
         
         translated = translated.split("\n")[0].strip()
-        translated = translated.split(" ")[0].strip()
+        translated = translated.strip()
         
         if contains_chinese(translated):
+            return None
+        
+        if len(translated) < 3:
             return None
         
         return translated if translated else None
