@@ -465,8 +465,8 @@ curl -X POST http://localhost:8000/api/image-to-image \
     "image_path": "/data/uploads/666.png",
     "mode": "img2img",
     "strength": 0.7,
-    "num_inference_steps": 20,
-    "guidance_scale": 7.0
+    "num_inference_steps": 8,
+    "guidance_scale": 0.5
   }'
 ```
 
@@ -480,8 +480,8 @@ curl -X POST http://localhost:8000/api/image-to-image \
     "image_path": "/data/uploads/666.png",
     "mode": "img2img",
     "strength": 0.3,
-    "num_inference_steps": 20,
-    "guidance_scale": 7.0
+    "num_inference_steps": 8,
+    "guidance_scale": 0.5
   }'
 ```
 
@@ -494,9 +494,9 @@ curl -X POST http://localhost:8000/api/image-to-image \
     "prompt": "a red dress, elegant design",
     "image_path": "/data/uploads/person.png",
     "mode": "inpaint",
-    "num_inference_steps": 20,
-    "guidance_scale": 7.0,
-    "controlnet_conditioning_scale": 0.8
+    "num_inference_steps": 8,
+    "guidance_scale": 0.5,
+    "controlnet_conditioning_scale": 0.5
   }'
 ```
 
@@ -512,13 +512,28 @@ curl -X POST http://localhost:8000/api/image-to-image \
     "image_path": "/data/uploads/person.png",
     "mode": "inpaint",
     "mask_prompt": "dress",
-    "num_inference_steps": 20,
-    "guidance_scale": 7.0,
-    "controlnet_conditioning_scale": 0.8
+    "num_inference_steps": 8,
+    "guidance_scale": 0.5,
+    "controlnet_conditioning_scale": 0.5
   }'
 ```
 
 > **说明:** 使用 `mask_prompt` 参数可以单独指定 SAM 要分割的对象。这样 SAM 只需要分割 "dress"，而不是整个复杂描述。生成时使用完整的 `prompt`。
+
+> **💡 关键词提取机制:**
+> 
+> SAM3 模型仅支持英文关键词。系统使用 Qwen3-0.6B 模型自动从用户描述中提取英文关键词：
+> 
+> | 用户输入 | 提取结果 | 说明 |
+> |---------|---------|------|
+> | `"把头发染成金色"` | `hair` | 自动提取并翻译 |
+> | `"衣服换成黑色的"` | `clothes` | 自动提取并翻译 |
+> | `"Change the background"` | `background` | 英文直接提取 |
+> | `"把背景换成森林"` | `background` | 提取要修改的对象 |
+> 
+> - 如果不指定 `mask_prompt`，系统会自动从 `prompt` 中提取关键词
+> - 可以显式指定 `mask_prompt` 来精确控制分割对象
+> - `mask_prompt` 支持中英文输入，系统会自动转换为英文关键词
 
 #### 示例 4: 边缘检测标准模式 (canny) - 完全重绘保留边缘
 
@@ -529,9 +544,9 @@ curl -X POST http://localhost:8000/api/image-to-image \
     "prompt": "a futuristic cyberpunk cityscape at night, neon lights, rain",
     "image_path": "/data/uploads/666.png",
     "mode": "canny",
-    "num_inference_steps": 20,
-    "guidance_scale": 7.0,
-    "controlnet_conditioning_scale": 0.8
+    "num_inference_steps": 8,
+    "guidance_scale": 0.5,
+    "controlnet_conditioning_scale": 0.7
   }'
 ```
 
@@ -546,9 +561,9 @@ curl -X POST http://localhost:8000/api/image-to-image \
     "prompt": "oil painting style, van gogh inspired, artistic brushstrokes",
     "image_path": "/data/uploads/portrait.png",
     "mode": "canny_img2img",
-    "num_inference_steps": 20,
-    "guidance_scale": 7.0,
-    "controlnet_conditioning_scale": 0.8
+    "num_inference_steps": 8,
+    "guidance_scale": 0.5,
+    "controlnet_conditioning_scale": 0.7
   }'
 ```
 
@@ -563,9 +578,9 @@ curl -X POST http://localhost:8000/api/image-to-image \
     "prompt": "a mystical forest with glowing mushrooms, fantasy art style",
     "image_path": "/data/uploads/666.png",
     "mode": "depth",
-    "num_inference_steps": 20,
-    "guidance_scale": 7.0,
-    "controlnet_conditioning_scale": 0.8
+    "num_inference_steps": 8,
+    "guidance_scale": 0.5,
+    "controlnet_conditioning_scale": 0.7
   }'
 ```
 
@@ -580,9 +595,9 @@ curl -X POST http://localhost:8000/api/image-to-image \
     "prompt": "underwater scene style, blue tones, ocean atmosphere",
     "image_path": "/data/uploads/landscape.png",
     "mode": "depth_img2img",
-    "num_inference_steps": 25,
-    "guidance_scale": 7.5,
-    "controlnet_conditioning_scale": 0.9
+    "num_inference_steps": 10,
+    "guidance_scale": 0.5,
+    "controlnet_conditioning_scale": 0.8
   }'
 ```
 
@@ -597,9 +612,9 @@ curl -X POST http://localhost:8000/api/image-to-image \
     "prompt": "iron man armor, marvel superhero, high tech suit, glowing arc reactor",
     "image_path": "/data/uploads/person.png",
     "mode": "pose",
-    "num_inference_steps": 20,
-    "guidance_scale": 7.0,
-    "controlnet_conditioning_scale": 0.8
+    "num_inference_steps": 8,
+    "guidance_scale": 0.5,
+    "controlnet_conditioning_scale": 0.7
   }'
 ```
 
@@ -614,9 +629,9 @@ curl -X POST http://localhost:8000/api/image-to-image \
     "prompt": "anime style character, vibrant colors, cel shading",
     "image_path": "/data/uploads/portrait.png",
     "mode": "pose_img2img",
-    "num_inference_steps": 25,
-    "guidance_scale": 8.0,
-    "controlnet_conditioning_scale": 0.7
+    "num_inference_steps": 10,
+    "guidance_scale": 0.5,
+    "controlnet_conditioning_scale": 0.6
   }'
 ```
 
@@ -632,8 +647,8 @@ curl -X POST http://localhost:8000/api/image-to-image \
     "image_path": "/data/uploads/flower.png",
     "mode": "img2img",
     "strength": 0.6,
-    "num_inference_steps": 20,
-    "guidance_scale": 7.0,
+    "num_inference_steps": 8,
+    "guidance_scale": 0.5,
     "seed": 12345
   }'
 ```
@@ -648,8 +663,8 @@ curl -X POST http://localhost:8000/api/image-to-image \
     "image_path": "/data/uploads/garden.png",
     "mode": "img2img",
     "strength": 0.5,
-    "num_inference_steps": 20,
-    "guidance_scale": 7.0,
+    "num_inference_steps": 8,
+    "guidance_scale": 0.5,
     "num_images": 4
   }'
 ```
@@ -664,8 +679,8 @@ curl -X POST http://localhost:8000/api/image-to-image \
     "image_path": "/data/uploads/portrait.png",
     "mode": "img2img",
     "strength": 0.5,
-    "num_inference_steps": 25,
-    "guidance_scale": 7.5,
+    "num_inference_steps": 10,
+    "guidance_scale": 0.5,
     "negative_prompt": "ugly, deformed, bad anatomy, extra fingers, watermark, text, blurry"
   }'
 ```
@@ -678,13 +693,27 @@ curl -X POST http://localhost:8000/api/image-to-image \
 | `image_path` | string | 必需 | 输入图片路径（原图） |
 | `mask_prompt` | string | null | SAM 分割提示词，用于指定要分割的对象（**仅 inpaint 模式有效**，默认使用 `prompt`） |
 | `mode` | string | "img2img" | 模式: img2img, inpaint, canny, depth, pose, canny_img2img, depth_img2img, pose_img2img |
-| `strength` | float | 0.8 | 重绘幅度（**仅 img2img 模式有效**） |
-| `num_inference_steps` | int | 20 | 推理步数 |
-| `guidance_scale` | float | 7.0 | CFG 引导强度 |
-| `controlnet_conditioning_scale` | float | 0.8 | ControlNet 条件强度（**inpaint/canny/depth/pose 及增强模式有效**） |
+| `strength` | float | 0.9 | 重绘幅度（**仅 img2img 模式有效**） |
+| `num_inference_steps` | int | 8 | 推理步数（Z-Image Turbo 推荐 8-10） |
+| `guidance_scale` | float | 0.5 | CFG 引导强度（Z-Image Turbo 推荐 0-1） |
+| `controlnet_conditioning_scale` | float | 0.5 | ControlNet 条件强度（**inpaint/canny/depth/pose 及增强模式有效**） |
 | `negative_prompt` | string | "" | 反向提示词，用于排除不想要的元素 |
 | `seed` | int | null | 随机种子（null 则自动生成） |
 | `num_images` | int | 1 | 生成图片数量 |
+
+> **⚠️ Z-Image Turbo 参数特殊说明:**
+> 
+> Z-Image Turbo 是蒸馏模型，参数设置与普通扩散模型不同：
+> 
+> | 参数 | 普通模型 | Z-Image Turbo | 说明 |
+> |------|---------|---------------|------|
+> | `guidance_scale` | 7.0-12.0 | **0.0-1.0** | Z-Image Turbo 对 guidance 非常敏感，过高会导致效果变差 |
+> | `num_inference_steps` | 20-50 | **8-10** | Z-Image Turbo 经过蒸馏，少量步数即可生成高质量图像 |
+> | `controlnet_conditioning_scale` | 0.8-1.0 | **0.5-0.8** | inpaint 模式建议使用较低值（0.5），允许更多修改 |
+> 
+> **参数调优建议:**
+> - 修改头发颜色等细节修改：`controlnet_conditioning_scale=0.3-0.5`，`strength=0.9`
+> - 风格转换：`controlnet_conditioning_scale=0.6-0.8`，`strength=0.7`
 
 **参数详解:**
 
@@ -736,6 +765,64 @@ curl -X POST http://localhost:8000/api/image-to-image \
   ]
 }
 ```
+
+---
+
+### 4.3 预览分割区域 (Preview Mask)
+
+在使用 inpaint 模式前，可以先预览 SAM 模型会分割的区域，确保分割效果符合预期。
+
+```bash
+curl -X POST http://localhost:8000/api/preview-mask \
+  -H "Content-Type: application/json" \
+  -d '{
+    "image_path": "/data/uploads/person.png",
+    "prompt": "把头发染成金色"
+  }'
+```
+
+**请求参数:**
+
+| 参数 | 类型 | 默认值 | 说明 |
+|------|------|--------|------|
+| `image_path` | string | 必需 | 输入图片路径 |
+| `prompt` | string | 必需 | 编辑提示词（系统会自动提取关键词） |
+| `mask_prompt` | string | null | 可选，手动指定分割对象（如 "hair"、"dress"） |
+
+**响应示例:**
+```json
+{
+  "mask_path": "/data/outputs/mask_20240326_123456.png",
+  "keyword": "hair",
+  "coverage": 15.5
+}
+```
+
+**响应字段说明:**
+
+| 字段 | 类型 | 说明 |
+|------|------|------|
+| `mask_path` | string | 分割蒙版图片路径（白色区域为分割区域） |
+| `keyword` | string | 提取的关键词（英文） |
+| `coverage` | float | 分割区域占图片的百分比 |
+
+**使用场景:**
+- 在正式生成前确认 SAM 分割的区域是否正确
+- 调整 `mask_prompt` 参数以获得更精确的分割
+- 中文提示词会自动翻译成英文进行分割
+
+**示例 - 手动指定分割对象:**
+```bash
+curl -X POST http://localhost:8000/api/preview-mask \
+  -H "Content-Type: application/json" \
+  -d '{
+    "image_path": "/data/uploads/person.png",
+    "prompt": "把衣服换成红色的，添加一些花纹",
+    "mask_prompt": "衣服"
+  }'
+```
+
+> **说明:** 当 `prompt` 包含多个修改意图时，使用 `mask_prompt` 可以精确指定要分割的对象。
 
 ---
 

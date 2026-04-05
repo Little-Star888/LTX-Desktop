@@ -75,35 +75,38 @@ class KeywordExtractor:
     _model = None
     _tokenizer = None
 
-    EXTRACTION_PROMPT = """从图像编辑请求中提取主要对象，并翻译成英文。严格只输出一个英文单词。
+    EXTRACTION_PROMPT = """Extract the main object from the image editing request and output ONLY ONE English word. No explanation, no translation, just the English word.
 
-示例：
-请求: "把裙子改成红色"
-输出: dress
+Examples:
+Request: "把裙子改成红色"
+Output: dress
 
-请求: "Change the background to a beach"
-输出: background
+Request: "Change the background to a beach"
+Output: background
 
-请求: "给人物添加帽子"
-输出: person
+Request: "给人物添加帽子"
+Output: person
 
-请求: "把头发染成金色"
-输出: hair
+Request: "把头发染成金色"
+Output: hair
 
-请求: "Replace the car with a bicycle"
-输出: car
+Request: "Replace the car with a bicycle"
+Output: car
 
-请求: "Make the sky more blue"
-输出: sky
+Request: "Make the sky more blue"
+Output: sky
 
-请求: "修改衣服颜色"
-输出: clothes
+Request: "修改衣服颜色"
+Output: clothes
 
-请求: "衣服换成黑色的"
-输出: clothes
+Request: "衣服换成黑色的"
+Output: clothes
 
-请求: "{prompt}"
-输出:"""
+Request: "把背景换成森林"
+Output: background
+
+Request: "{prompt}"
+Output:"""
 
     @classmethod
     def get_instance(
