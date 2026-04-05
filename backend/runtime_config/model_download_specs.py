@@ -110,11 +110,11 @@ DEFAULT_MODEL_DOWNLOAD_SPECS: dict[ModelFileType, ModelFileDownloadSpec] = {
         description="Z-Image ControlNet Union 2.0 for img2img/inpaint",
     ),
     "sam": ModelFileDownloadSpec(
-        relative_path=Path("sam3.1_multiplex.pt"),
-        expected_size_bytes=3_502_755_717,
+        relative_path=Path("sam3.pt"),
+        expected_size_bytes=3_300_000_000,
         is_folder=False,
-        repo_id="facebook/sam3.1",
-        description="SAM 3.1 for automatic mask generation in inpaint mode",
+        repo_id="facebook/sam3",
+        description="SAM 3.0 for automatic mask generation in inpaint mode",
     ),
 }
 
