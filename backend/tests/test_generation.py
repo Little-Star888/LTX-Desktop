@@ -5,7 +5,9 @@ from __future__ import annotations
 from dataclasses import dataclass
 from pathlib import Path
 
-from state.app_state_types import GpuSlot, VideoPipelineState, VideoPipelineWarmth
+from services.ltx_api_client.ltx_api_client import LTXAPIClientError
+from state.app_state_types import GpuSlot, VideoPipelineState
+from tests.http_error_assertions import assert_http_error
 from tests.fakes.services import FakeFastVideoPipeline
 
 
@@ -20,7 +22,7 @@ _T2V_JSON = {
     "prompt": "test",
     "resolution": "540p",
     "model": "fast",
-    "duration": 2,
+    "duration": 5,
     "fps": 24,
 }
 
@@ -45,7 +47,6 @@ def _fake_running_generation_state(test_state) -> None:
     test_state.state.gpu_slot = GpuSlot(
         active_pipeline=VideoPipelineState(
             pipeline=pipeline,
-            warmth=VideoPipelineWarmth.COLD,
             is_compiled=False,
         ),
     )
@@ -53,6 +54,10 @@ def _fake_running_generation_state(test_state) -> None:
 
 
 class TestGenerate:
+    def test_t2v_requires_downloaded_ltx_model(self, client):
+        r = client.post("/api/generate", json=_T2V_JSON)
+        assert_http_error(r, status_code=409, code="NO_DOWNLOADED_LTX_MODEL")
+
     def test_t2v_happy_path(self, client, test_state, fake_services, create_fake_model_files):
         create_fake_model_files()
         _enable_local_text_encoding(test_state)
@@ -63,7 +68,7 @@ class TestGenerate:
                 "prompt": "A beautiful sunset",
                 "resolution": "1080p",
                 "model": "fast",
-                "duration": 2,
+                "duration": 5,
                 "fps": 24,
                 "cameraMotion": "none",
             },
@@ -104,8 +109,13 @@ class TestGenerate:
             "/api/generate",
             json={**_T2V_JSON, "imagePath": str(bad_image)},
         )
-        assert r.status_code == 400
-        assert "Invalid image file" in r.json()["error"]
+        data = assert_http_error(
+            r,
+            status_code=400,
+            code="HTTP_400",
+            message=f"Invalid image file: {bad_image}",
+        )
+        assert "Invalid image file" in data["message"]
 
     def test_resolution_mapping_540p(self, client, test_state, fake_services, create_fake_model_files):
         create_fake_model_files()
@@ -176,8 +186,8 @@ class TestA2VGenerate:
             json={
                 "prompt": "A music video",
                 "resolution": "540p",
-                "model": "pro",
-                "duration": 2,
+                "model": "fast",
+                "duration": 5,
                 "fps": 24,
                 "audioPath": str(audio_file),
             },
@@ -204,8 +214,8 @@ class TestA2VGenerate:
             "/api/generate",
             json={
                 "prompt": "A music video",
-                "model": "pro",
-                "duration": 2,
+                "model": "fast",
+                "duration": 5,
                 "fps": 24,
                 "audioPath": "/no/such/audio.wav",
             },
@@ -222,17 +232,22 @@ class TestA2VGenerate:
             "/api/generate",
             json={
                 "prompt": "A music video",
-                "model": "pro",
-                "duration": 2,
+                "model": "fast",
+                "duration": 5,
                 "fps": 24,
                 "audioPath": str(audio_file),
             },
         )
-        assert r.status_code == 400
-        assert "Invalid audio file" in r.json()["error"]
+        data = assert_http_error(
+            r,
+            status_code=400,
+            code="HTTP_400",
+            message=f"Invalid audio file: {audio_file}",
+        )
+        assert "Invalid audio file" in data["message"]
 
     def test_a2v_forced_api_routes_to_ltx_api(self, client, test_state, fake_services, tmp_path):
-        test_state.config.force_api_generations = True
+        test_state.config.local_generations_mode = "unsupported"
         test_state.state.app_settings.ltx_api_key = "api-key"
         audio_file = tmp_path / "test_audio.wav"
         _write_test_wav(audio_file)
@@ -260,7 +275,7 @@ class TestA2VGenerate:
         assert call["resolution"] == "1920x1080"
 
     def test_a2v_prefers_api_routes_to_ltx_api(self, client, test_state, fake_services, tmp_path):
-        test_state.config.force_api_generations = False
+        test_state.config.local_generations_mode = "full_models_loading"
         test_state.state.app_settings.user_prefers_ltx_api_video_generations = True
         test_state.state.app_settings.ltx_api_key = "api-key"
         audio_file = tmp_path / "test_audio.wav"
@@ -286,7 +301,7 @@ class TestA2VGenerate:
         assert len(fake_services.a2v_pipeline.generate_calls) == 0
 
     def test_a2v_prefers_api_without_key_falls_back_to_local(self, client, test_state, fake_services, create_fake_model_files, tmp_path):
-        test_state.config.force_api_generations = False
+        test_state.config.local_generations_mode = "full_models_loading"
         test_state.state.app_settings.user_prefers_ltx_api_video_generations = True
         test_state.state.app_settings.ltx_api_key = ""
         _enable_local_text_encoding(test_state)
@@ -299,8 +314,8 @@ class TestA2VGenerate:
             json={
                 "prompt": "A music video",
                 "resolution": "540p",
-                "model": "pro",
-                "duration": 2,
+                "model": "fast",
+                "duration": 5,
                 "fps": 24,
                 "audioPath": str(audio_file),
             },
@@ -314,7 +329,7 @@ class TestA2VGenerate:
     def test_a2v_forced_api_routes_to_ltx_api_with_audio_and_image(
         self, client, test_state, fake_services, make_test_image, tmp_path
     ):
-        test_state.config.force_api_generations = True
+        test_state.config.local_generations_mode = "unsupported"
         test_state.state.app_settings.ltx_api_key = "api-key"
         audio_file = tmp_path / "test_audio.wav"
         _write_test_wav(audio_file)
@@ -325,7 +340,7 @@ class TestA2VGenerate:
             "/api/generate",
             json={
                 "prompt": "A music video with a still frame",
-                "resolution": "2160p",
+                "resolution": "1080p",
                 "model": "pro",
                 "duration": 6,
                 "fps": 50,
@@ -363,8 +378,8 @@ class TestA2VGenerate:
                 json={
                     "prompt": "A music video",
                     "resolution": resolution,
-                    "model": "pro",
-                    "duration": 2,
+                    "model": "fast",
+                    "duration": 5,
                     "fps": 24,
                     "audioPath": str(audio_file),
                 },
@@ -376,7 +391,7 @@ class TestA2VGenerate:
             assert call["height"] == expected_h, f"{resolution}: expected height {expected_h}, got {call['height']}"
 
     def test_a2v_forced_api_rejects_missing_audio_file(self, client, test_state):
-        test_state.config.force_api_generations = True
+        test_state.config.local_generations_mode = "unsupported"
         test_state.state.app_settings.ltx_api_key = "api-key"
 
         r = client.post(
@@ -391,11 +406,16 @@ class TestA2VGenerate:
             },
         )
 
-        assert r.status_code == 400
-        assert "Audio file not found" in r.json()["error"]
+        data = assert_http_error(
+            r,
+            status_code=400,
+            code="HTTP_400",
+            message="Audio file not found: /no/such/audio.wav",
+        )
+        assert "Audio file not found" in data["message"]
 
     def test_a2v_forced_api_missing_key_returns_integrity_error(self, client, test_state, tmp_path):
-        test_state.config.force_api_generations = True
+        test_state.config.local_generations_mode = "unsupported"
         test_state.state.app_settings.ltx_api_key = ""
         audio_file = tmp_path / "test_audio.wav"
         _write_test_wav(audio_file)
@@ -412,11 +432,10 @@ class TestA2VGenerate:
             },
         )
 
-        assert r.status_code == 400
-        assert r.json()["error"] == "PRO_API_KEY_REQUIRED"
+        assert_http_error(r, status_code=400, code="PRO_API_KEY_REQUIRED")
 
     def test_a2v_forced_api_cancelled_response(self, client, test_state, fake_services, tmp_path):
-        test_state.config.force_api_generations = True
+        test_state.config.local_generations_mode = "unsupported"
         test_state.state.app_settings.ltx_api_key = "api-key"
         fake_services.ltx_api_client.raise_on_audio_to_video = RuntimeError("cancelled")
         audio_file = tmp_path / "test_audio.wav"
@@ -440,7 +459,7 @@ class TestA2VGenerate:
 
 class TestForcedApiGenerate:
     def test_prefers_api_video_routes_to_ltx_api(self, client, test_state, fake_services):
-        test_state.config.force_api_generations = False
+        test_state.config.local_generations_mode = "full_models_loading"
         test_state.state.app_settings.user_prefers_ltx_api_video_generations = True
         test_state.state.app_settings.ltx_api_key = "api-key"
 
@@ -463,7 +482,7 @@ class TestForcedApiGenerate:
         assert len(fake_services.fast_video_pipeline.generate_calls) == 0
 
     def test_prefers_api_video_without_key_falls_back_to_local(self, client, test_state, fake_services, create_fake_model_files):
-        test_state.config.force_api_generations = False
+        test_state.config.local_generations_mode = "full_models_loading"
         test_state.state.app_settings.user_prefers_ltx_api_video_generations = True
         test_state.state.app_settings.ltx_api_key = ""
         _enable_local_text_encoding(test_state)
@@ -477,7 +496,7 @@ class TestForcedApiGenerate:
         assert len(fake_services.fast_video_pipeline.generate_calls) == 1
 
     def test_t2v_routes_to_ltx_api(self, client, test_state, fake_services):
-        test_state.config.force_api_generations = True
+        test_state.config.local_generations_mode = "unsupported"
         test_state.state.app_settings.ltx_api_key = "api-key"
 
         r = client.post(
@@ -505,7 +524,7 @@ class TestForcedApiGenerate:
         assert call["camera_motion"] == "dolly_in"
 
     def test_i2v_routes_to_ltx_api(self, client, test_state, fake_services, make_test_image, tmp_path):
-        test_state.config.force_api_generations = True
+        test_state.config.local_generations_mode = "unsupported"
         test_state.state.app_settings.ltx_api_key = "api-key"
         image_path = tmp_path / "input.png"
         image_path.write_bytes(make_test_image().getvalue())
@@ -538,7 +557,7 @@ class TestForcedApiGenerate:
         assert call["camera_motion"] == "jib_up"
 
     def test_camera_motion_none_maps_to_none_for_t2v(self, client, test_state, fake_services):
-        test_state.config.force_api_generations = True
+        test_state.config.local_generations_mode = "unsupported"
         test_state.state.app_settings.ltx_api_key = "api-key"
 
         r = client.post(
@@ -560,7 +579,7 @@ class TestForcedApiGenerate:
         assert call["camera_motion"] == "none"
 
     def test_camera_motion_none_maps_to_none_for_i2v(self, client, test_state, fake_services, make_test_image, tmp_path):
-        test_state.config.force_api_generations = True
+        test_state.config.local_generations_mode = "unsupported"
         test_state.state.app_settings.ltx_api_key = "api-key"
         image_path = tmp_path / "input-none.png"
         image_path.write_bytes(make_test_image().getvalue())
@@ -588,7 +607,7 @@ class TestForcedApiGenerate:
         assert call["camera_motion"] == "none"
 
     def test_i2v_fast_routes_to_fast_model(self, client, test_state, fake_services, make_test_image, tmp_path):
-        test_state.config.force_api_generations = True
+        test_state.config.local_generations_mode = "unsupported"
         test_state.state.app_settings.ltx_api_key = "api-key"
         image_path = tmp_path / "input-fast.png"
         image_path.write_bytes(make_test_image().getvalue())
@@ -619,7 +638,7 @@ class TestForcedApiGenerate:
         assert call["fps"] == 25.0
 
     def test_invalid_forced_model_rejected(self, client, test_state):
-        test_state.config.force_api_generations = True
+        test_state.config.local_generations_mode = "unsupported"
         test_state.state.app_settings.ltx_api_key = "api-key"
 
         r = client.post(
@@ -637,7 +656,7 @@ class TestForcedApiGenerate:
         assert r.status_code == 422
 
     def test_missing_api_key_returns_integrity_error(self, client, test_state):
-        test_state.config.force_api_generations = True
+        test_state.config.local_generations_mode = "unsupported"
         test_state.state.app_settings.ltx_api_key = ""
 
         r = client.post(
@@ -652,11 +671,10 @@ class TestForcedApiGenerate:
             },
         )
 
-        assert r.status_code == 400
-        assert r.json()["error"] == "PRO_API_KEY_REQUIRED"
+        assert_http_error(r, status_code=400, code="PRO_API_KEY_REQUIRED")
 
     def test_invalid_forced_resolution_rejected(self, client, test_state):
-        test_state.config.force_api_generations = True
+        test_state.config.local_generations_mode = "unsupported"
         test_state.state.app_settings.ltx_api_key = "api-key"
 
         r = client.post(
@@ -671,11 +689,15 @@ class TestForcedApiGenerate:
             },
         )
 
-        assert r.status_code == 400
-        assert r.json()["error"] == "INVALID_FORCED_API_RESOLUTION"
+        assert_http_error(
+            r,
+            status_code=422,
+            code="INVALID_VIDEO_GENERATION_SPEC",
+            message="Unsupported api text-to-video resolution '720p' for pipeline 'pro'",
+        )
 
     def test_invalid_forced_duration_rejected(self, client, test_state):
-        test_state.config.force_api_generations = True
+        test_state.config.local_generations_mode = "unsupported"
         test_state.state.app_settings.ltx_api_key = "api-key"
 
         r = client.post(
@@ -690,11 +712,15 @@ class TestForcedApiGenerate:
             },
         )
 
-        assert r.status_code == 400
-        assert r.json()["error"] == "INVALID_FORCED_API_DURATION"
+        assert_http_error(
+            r,
+            status_code=422,
+            code="INVALID_VIDEO_GENERATION_SPEC",
+            message="Unsupported api text-to-video duration '5' for pipeline 'pro' at resolution '1080p' and fps '25'",
+        )
 
     def test_invalid_forced_fps_rejected(self, client, test_state):
-        test_state.config.force_api_generations = True
+        test_state.config.local_generations_mode = "unsupported"
         test_state.state.app_settings.ltx_api_key = "api-key"
 
         r = client.post(
@@ -709,11 +735,45 @@ class TestForcedApiGenerate:
             },
         )
 
-        assert r.status_code == 400
-        assert r.json()["error"] == "INVALID_FORCED_API_FPS"
+        assert r.status_code == 422
+
+    def test_forced_api_surfaces_insufficient_funds_as_custom_402(self, client, test_state, fake_services):
+        test_state.config.local_generations_mode = "unsupported"
+        test_state.state.app_settings.ltx_api_key = "api-key"
+        fake_services.ltx_api_client.raise_on_text_to_video = LTXAPIClientError(
+            402,
+            'LTX API generation failed (402): {"type":"error","error":{"type":"insufficient_funds_error","message":"Insufficient funds. Required: 36 cents"}}',
+            stage="generation",
+            provider_error_type="insufficient_funds_error",
+            provider_message="Insufficient funds. Required: 36 cents",
+            request_id="req-123",
+        )
+
+        r = client.post(
+            "/api/generate",
+            json={
+                "prompt": "A city skyline",
+                "resolution": "1080p",
+                "model": "pro",
+                "duration": 6,
+                "fps": 25,
+                "audio": False,
+            },
+        )
+
+        assert_http_error(
+            r,
+            status_code=402,
+            code="LTX_INSUFFICIENT_FUNDS",
+            message="Your LTX API credits are insufficient for this generation. Buy more credits and try again.",
+        )
+
+        progress = test_state.generation.get_generation_progress()
+        assert progress.status == "error"
+        assert progress.phase == "error"
 
     def test_invalid_camera_motion_rejected_with_422(self, client, test_state):
-        test_state.config.force_api_generations = True
+        test_state.config.local_generations_mode = "unsupported"
         test_state.state.app_settings.ltx_api_key = "api-key"
 
         r = client.post(
@@ -732,7 +792,7 @@ class TestForcedApiGenerate:
         assert r.status_code == 422
 
     def test_forced_api_cancelled_response(self, client, test_state, fake_services):
-        test_state.config.force_api_generations = True
+        test_state.config.local_generations_mode = "unsupported"
         test_state.state.app_settings.ltx_api_key = "api-key"
         fake_services.ltx_api_client.raise_on_text_to_video = RuntimeError("cancelled")
 
@@ -752,7 +812,7 @@ class TestForcedApiGenerate:
         assert r.json()["status"] == "cancelled"
 
     def test_portrait_resolution_1080p(self, client, test_state, fake_services):
-        test_state.config.force_api_generations = True
+        test_state.config.local_generations_mode = "unsupported"
         test_state.state.app_settings.ltx_api_key = "api-key"
 
         r = client.post(
@@ -772,7 +832,7 @@ class TestForcedApiGenerate:
         assert call["resolution"] == "1080x1920"
 
     def test_portrait_resolution_1440p(self, client, test_state, fake_services):
-        test_state.config.force_api_generations = True
+        test_state.config.local_generations_mode = "unsupported"
         test_state.state.app_settings.ltx_api_key = "api-key"
 
         r = client.post(
@@ -792,7 +852,7 @@ class TestForcedApiGenerate:
         assert call["resolution"] == "1440x2560"
 
     def test_portrait_resolution_4k(self, client, test_state, fake_services):
-        test_state.config.force_api_generations = True
+        test_state.config.local_generations_mode = "unsupported"
         test_state.state.app_settings.ltx_api_key = "api-key"
 
         r = client.post(
@@ -812,7 +872,7 @@ class TestForcedApiGenerate:
         assert call["resolution"] == "2160x3840"
 
     def test_default_landscape_when_aspect_ratio_omitted(self, client, test_state, fake_services):
-        test_state.config.force_api_generations = True
+        test_state.config.local_generations_mode = "unsupported"
         test_state.state.app_settings.ltx_api_key = "api-key"
 
         r = client.post(
@@ -831,7 +891,7 @@ class TestForcedApiGenerate:
         assert call["resolution"] == "1920x1080"
 
     def test_invalid_aspect_ratio_rejected(self, client, test_state):
-        test_state.config.force_api_generations = True
+        test_state.config.local_generations_mode = "unsupported"
         test_state.state.app_settings.ltx_api_key = "api-key"
 
         r = client.post(
@@ -849,7 +909,7 @@ class TestForcedApiGenerate:
         assert r.status_code == 422
 
     def test_extended_durations_for_fast_1080p_24fps(self, client, test_state, fake_services):
-        test_state.config.force_api_generations = True
+        test_state.config.local_generations_mode = "unsupported"
         test_state.state.app_settings.ltx_api_key = "api-key"
 
         r = client.post(
@@ -868,7 +928,7 @@ class TestForcedApiGenerate:
         assert call["duration"] == 20.0
 
     def test_extended_duration_rejected_for_pro_1080p_24fps(self, client, test_state):
-        test_state.config.force_api_generations = True
+        test_state.config.local_generations_mode = "unsupported"
         test_state.state.app_settings.ltx_api_key = "api-key"
 
         r = client.post(
@@ -882,11 +942,15 @@ class TestForcedApiGenerate:
             },
         )
 
-        assert r.status_code == 400
-        assert r.json()["error"] == "INVALID_FORCED_API_DURATION"
+        assert_http_error(
+            r,
+            status_code=422,
+            code="INVALID_VIDEO_GENERATION_SPEC",
+            message="Unsupported api text-to-video duration '20' for pipeline 'pro' at resolution '1080p' and fps '24'",
+        )
 
     def test_extended_duration_rejected_for_fast_1440p_24fps(self, client, test_state):
-        test_state.config.force_api_generations = True
+        test_state.config.local_generations_mode = "unsupported"
         test_state.state.app_settings.ltx_api_key = "api-key"
 
         r = client.post(
@@ -900,11 +964,15 @@ class TestForcedApiGenerate:
             },
         )
 
-        assert r.status_code == 400
-        assert r.json()["error"] == "INVALID_FORCED_API_DURATION"
+        assert_http_error(
+            r,
+            status_code=422,
+            code="INVALID_VIDEO_GENERATION_SPEC",
+            message="Unsupported api text-to-video duration '20' for pipeline 'fast' at resolution '1440p' and fps '24'",
+        )
 
     def test_fps_24_accepted(self, client, test_state, fake_services):
-        test_state.config.force_api_generations = True
+        test_state.config.local_generations_mode = "unsupported"
         test_state.state.app_settings.ltx_api_key = "api-key"
 
         r = client.post(
@@ -923,7 +991,7 @@ class TestForcedApiGenerate:
         assert call["fps"] == 24.0
 
     def test_fps_48_accepted(self, client, test_state, fake_services):
-        test_state.config.force_api_generations = True
+        test_state.config.local_generations_mode = "unsupported"
         test_state.state.app_settings.ltx_api_key = "api-key"
 
         r = client.post(
@@ -942,7 +1010,7 @@ class TestForcedApiGenerate:
         assert call["fps"] == 48.0
 
     def test_a2v_portrait_resolution(self, client, test_state, fake_services, tmp_path):
-        test_state.config.force_api_generations = True
+        test_state.config.local_generations_mode = "unsupported"
         test_state.state.app_settings.ltx_api_key = "api-key"
         audio_file = tmp_path / "test_audio.wav"
         _write_test_wav(audio_file)
@@ -962,10 +1030,10 @@ class TestForcedApiGenerate:
 
         assert r.status_code == 200
         call = fake_services.ltx_api_client.audio_to_video_calls[0]
-        assert call["resolution"] == "1920x1080"
+        assert call["resolution"] == "1080x1920"
 
-    def test_a2v_forced_api_overrides_resolution_and_aspect_ratio(self, client, test_state, fake_services, tmp_path):
-        test_state.config.force_api_generations = True
+    def test_a2v_forced_api_rejects_non_1080p(self, client, test_state, fake_services, tmp_path):
+        test_state.config.local_generations_mode = "unsupported"
         test_state.state.app_settings.ltx_api_key = "test_key"
         audio_file = tmp_path / "test_audio.wav"
         _write_test_wav(audio_file)
@@ -975,7 +1043,33 @@ class TestForcedApiGenerate:
             json={
                 "prompt": "A big video",
                 "resolution": "2160p",
-                "model": "pro",
+                "model": "fast",
+                "duration": 6,
+                "fps": 25,
+                "audioPath": str(audio_file),
+                "aspectRatio": "9:16",
+            },
+        )
+
+        assert_http_error(
+            r,
+            status_code=422,
+            code="INVALID_VIDEO_GENERATION_SPEC",
+            message="Unsupported api audio-to-video resolution '2160p' for pipeline 'fast'",
+        )
+
+    def test_a2v_forced_api_passes_through_model_and_aspect(self, client, test_state, fake_services, tmp_path):
+        test_state.config.local_generations_mode = "unsupported"
+        test_state.state.app_settings.ltx_api_key = "test_key"
+        audio_file = tmp_path / "test_audio.wav"
+        _write_test_wav(audio_file)
+
+        r = client.post(
+            "/api/generate",
+            json={
+                "prompt": "A portrait music video",
+                "resolution": "1080p",
+                "model": "fast",
                 "duration": 6,
                 "fps": 25,
                 "audioPath": str(audio_file),
@@ -986,8 +1080,8 @@ class TestForcedApiGenerate:
         assert r.status_code == 200
         assert r.json()["status"] == "complete"
         call = fake_services.ltx_api_client.audio_to_video_calls[0]
-        assert call["resolution"] == "1920x1080"
-        assert call["model"] == "ltx-2-3-pro"
+        assert call["resolution"] == "1080x1920"
+        assert call["model"] == "ltx-2-3-fast"
 
 
 class TestGenerateCancel:
@@ -1003,6 +1097,22 @@ class TestGenerateCancel:
         r = client.post("/api/generate/cancel")
         assert r.status_code == 200
         assert r.json()["status"] == "no_active_generation"
+
+
+class TestGenerateModelSpecs:
+    def test_models_specs_endpoint_returns_ordered_backend_specs(self, client):
+        r = client.get("/api/generate/models-specs")
+
+        assert r.status_code == 200
+        data = r.json()
+        assert [item["pipeline"] for item in data["local_models"]] == ["fast"]
+        assert data["local_models"][0]["spec"]["display_name"] == "LTX 2.3 Fast"
+        assert list(data["local_models"][0]["spec"]["supported_resolutions_durations"]["540p"]["fps_to_durations"].keys()) == ["24"]
+        assert [item["pipeline"] for item in data["api_models"]] == ["fast", "pro"]
+        assert list(data["api_models"][0]["spec"]["a2v_supported_resolutions_durations"].keys()) == ["1080p"]
+        assert data["api_models"][0]["spec"]["supported_resolutions_durations"]["1080p"]["fps_to_durations"]["24"] == [
+            6, 8, 10, 12, 14, 16, 18, 20,
+        ]
 
 
 class TestGenerationProgress:
@@ -1092,7 +1202,7 @@ class TestGenerateImage:
 
 class TestForcedApiGenerateImage:
     def test_generate_image_routes_to_zit_api(self, client, test_state, fake_services):
-        test_state.config.force_api_generations = True
+        test_state.config.local_generations_mode = "unsupported"
         test_state.state.app_settings.fal_api_key = "fal-key"
 
         r = client.post(
@@ -1108,16 +1218,15 @@ class TestForcedApiGenerateImage:
         assert len(fake_services.image_generation_pipeline.generate_calls) == 0
 
     def test_generate_image_missing_fal_key(self, client, test_state, fake_services):
-        test_state.config.force_api_generations = True
+        test_state.config.local_generations_mode = "unsupported"
         test_state.state.app_settings.fal_api_key = ""
 
         r = client.post("/api/generate-image", json={"prompt": "A cat"})
 
-        assert r.status_code == 500
-        assert r.json()["error"] == "FAL_API_KEY_NOT_CONFIGURED"
+        assert_http_error(r, status_code=500, code="FAL_API_KEY_NOT_CONFIGURED")
 
     def test_generate_image_cancelled(self, client, test_state, fake_services):
-        test_state.config.force_api_generations = True
+        test_state.config.local_generations_mode = "unsupported"
         test_state.state.app_settings.fal_api_key = "fal-key"
         fake_services.zit_api_client.raise_on_text_to_image = RuntimeError("cancelled")
 
@@ -1212,7 +1321,7 @@ class TestEnhancePromptFlag:
         audio_file = tmp_path / "test_audio.wav"
         _write_test_wav(audio_file)
 
-        r = client.post("/api/generate", json={**_T2V_JSON, "model": "pro", "audioPath": str(audio_file)})
+        r = client.post("/api/generate", json={**_T2V_JSON, "model": "fast", "audioPath": str(audio_file)})
         assert r.status_code == 200
 
         assert len(fake_services.text_encoder.encode_calls) == 1
@@ -1229,7 +1338,7 @@ class TestEnhancePromptFlag:
 
         r = client.post(
             "/api/generate",
-            json={**_T2V_JSON, "model": "pro", "audioPath": str(audio_file), "imagePath": str(image_path)},
+            json={**_T2V_JSON, "model": "fast", "audioPath": str(audio_file), "imagePath": str(image_path)},
         )
         assert r.status_code == 200
 

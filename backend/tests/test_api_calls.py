@@ -6,6 +6,7 @@ import uuid
 
 from services.interfaces import HttpTimeoutError
 from services.ltx_api_client.ltx_api_client import LTXAPIClientError, LTXRetakeResult
+from tests.http_error_assertions import assert_http_error
 from tests.fakes import FakeResponse
 
 
@@ -64,8 +65,7 @@ class TestSuggestGapPrompt:
 
     def test_missing_gemini_key_400(self, client):
         r = client.post("/api/suggest-gap-prompt", json={"beforePrompt": "test"})
-        assert r.status_code == 400
-        assert r.json()["error"] == "GEMINI_API_KEY_MISSING"
+        assert_http_error(r, status_code=400, code="GEMINI_API_KEY_MISSING")
 
     def test_timeout_504(self, client, test_state):
         test_state.state.app_settings.gemini_api_key = "key"
@@ -94,7 +94,7 @@ class TestRetake:
         return str(video_file)
 
     def _force_api(self, test_state) -> None:
-        test_state.config.force_api_generations = True
+        test_state.config.local_generations_mode = "unsupported"
 
     def _base_payload(self, video_path: str) -> dict[str, object]:
         return {
@@ -206,7 +206,7 @@ class TestRetake:
     def test_local_retake_happy_path(self, client, test_state, create_fake_model_files):
         create_fake_model_files(include_zit=False)
         test_state.state.app_settings.use_local_text_encoder = True
-        test_state.config.force_api_generations = False
+        test_state.config.local_generations_mode = "full_models_loading"
 
         video_path = self._make_valid_video(test_state)
         r = client.post("/api/retake", json=self._base_payload(video_path))
@@ -218,7 +218,7 @@ class TestRetake:
     def test_local_retake_mode_mapping(self, client, test_state, create_fake_model_files, fake_services):
         create_fake_model_files(include_zit=False)
         test_state.state.app_settings.use_local_text_encoder = True
-        test_state.config.force_api_generations = False
+        test_state.config.local_generations_mode = "full_models_loading"
 
         video_path = self._make_valid_video(test_state)
         client.post(
@@ -236,7 +236,7 @@ class TestRetake:
         assert retake_call["regenerate_audio"] is False
 
     def test_prefers_api_video_routes_retake_to_api(self, client, test_state, fake_services):
-        test_state.config.force_api_generations = False
+        test_state.config.local_generations_mode = "full_models_loading"
         test_state.state.app_settings.user_prefers_ltx_api_video_generations = True
         test_state.state.app_settings.ltx_api_key = "test-key"
         video_path = self._make_video(test_state)
@@ -259,7 +259,7 @@ class TestRetake:
         fake_services,
     ):
         create_fake_model_files(include_zit=False)
-        test_state.config.force_api_generations = False
+        test_state.config.local_generations_mode = "full_models_loading"
         test_state.state.app_settings.user_prefers_ltx_api_video_generations = True
         test_state.state.app_settings.ltx_api_key = ""
         test_state.state.app_settings.use_local_text_encoder = True

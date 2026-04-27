@@ -1,8 +1,9 @@
 import { type MenuDefinition } from '../../components/MenuBar'
-import { TEXT_PRESETS, type TimelineClip } from '../../types/project'
+import { TEXT_PRESETS } from '../../types/project'
+import type { TimelineClip } from '../../types/project-model'
 import type { KeyboardLayout } from '../../lib/keyboard-shortcuts'
 import { useMemo } from 'react'
-import { useShallow } from 'zustand/react/shallow'
+import { shallow } from 'zustand/vanilla/shallow'
 import {
   selectCanInsertEdit,
   selectCanRedo,
@@ -33,7 +34,7 @@ export interface MenuDepsParams {
 
 export function useBuildMenuDefinitions(p: MenuDepsParams): MenuDefinition[] {
   const actions = useEditorActions()
-  const menuState = useEditorStore(useShallow(selectMenuState))
+  const menuState = useEditorStore(selectMenuState, shallow)
   const canUseClipboard = useEditorStore(selectCanUseClipboard)
   const canUndo = useEditorStore(selectCanUndo)
   const canRedo = useEditorStore(selectCanRedo)

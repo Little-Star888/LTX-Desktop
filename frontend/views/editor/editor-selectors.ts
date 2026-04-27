@@ -6,7 +6,7 @@ import {
 import {
   DEFAULT_SUBTITLE_STYLE,
   DEFAULT_TRACKS,
-} from '../../types/project'
+} from '../../types/project-model'
 import type {
   Asset,
   SubtitleClip,
@@ -14,7 +14,7 @@ import type {
   Timeline,
   TimelineClip,
   Track,
-} from '../../types/project'
+} from '../../types/project-model'
 import type {
   AssetListFilters,
   AssetTakeView,
@@ -836,12 +836,40 @@ export function selectCanRegenerateClip(state: EditorState, clipId: string): boo
   return Boolean(selectLiveAssetForClip(state, clip)?.generationParams)
 }
 
-export function selectAssetBins(state: EditorState): string[] {
-  const bins = new Set<string>()
-  for (const asset of state.editorModel.assets) {
-    if (asset.bin) bins.add(asset.bin)
-  }
-  return Array.from(bins).sort()
+export interface AssetBinListItem {
+  id: string
+  name: string
+  count: number
+}
+
+export function selectAssetBins(state: EditorState): AssetBinListItem[] {
+  const assetCounts = state.editorModel.assets.reduce((counts, asset) => {
+    if (!asset.binId) return counts
+    counts.set(asset.binId, (counts.get(asset.binId) ?? 0) + 1)
+    return counts
+  }, new Map<string, number>())
+
+  return Object.entries(state.editorModel.bins)
+    .map(([id, name]) => ({
+      id,
+      name,
+      count: assetCounts.get(id) ?? 0,
+    }))
+    .sort((left, right) => left.name.localeCompare(right.name))
+}
+
+export function equalAssetBins(left: AssetBinListItem[], right: AssetBinListItem[]): boolean {
+  if (left === right) return true
+  if (left.length !== right.length) return false
+
+  return left.every((bin, index) => {
+    const other = right[index]
+    return (
+      bin.id === other.id
+      && bin.name === other.name
+      && bin.count === other.count
+    )
+  })
 }
 
 export function selectAssetTakesView(state: EditorState, assetId: string): AssetTakeView {
@@ -858,8 +886,8 @@ export function selectFilteredAssets(state: EditorState, filters: AssetListFilte
   if (filters.assetFilter && filters.assetFilter !== 'all') {
     result = result.filter(asset => asset.type === filters.assetFilter)
   }
-  if (filters.selectedBin !== undefined && filters.selectedBin !== null) {
-    result = result.filter(asset => asset.bin === filters.selectedBin)
+  if (filters.selectedBinId !== undefined && filters.selectedBinId !== null) {
+    result = result.filter(asset => asset.binId === filters.selectedBinId)
   }
   return result
 }

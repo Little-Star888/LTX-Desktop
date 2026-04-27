@@ -1,7 +1,7 @@
 import { useMemo } from 'react'
 import { MessageSquare, Trash2 } from 'lucide-react'
-import type { SubtitleStyle } from '../../types/project'
-import { DEFAULT_SUBTITLE_STYLE } from '../../types/project'
+import type { SubtitleStyle } from '../../types/project-model'
+import { DEFAULT_SUBTITLE_STYLE } from '../../types/project-model'
 import {
   selectSelectedSubtitleId,
   selectSubtitles,

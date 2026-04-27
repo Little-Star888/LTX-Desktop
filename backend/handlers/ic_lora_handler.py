@@ -26,7 +26,12 @@ from handlers.base import StateHandlerBase
 from handlers.generation_handler import GenerationHandler
 from handlers.pipelines_handler import PipelinesHandler
 from handlers.text_handler import TextHandler
-from runtime_config.model_download_specs import resolve_model_path
+from runtime_config.model_download_specs import (
+    DEPTH_PROCESSOR_CP_ID,
+    get_downloaded_ltx_model_id,
+    get_existing_cp_path,
+    get_ltx_model_spec,
+)
 from runtime_config.runtime_config import RuntimeConfig
 from state.conditioning_cache import ConditioningCacheEntry, ConditioningCacheKey
 from services.interfaces import VideoProcessor
@@ -72,13 +77,20 @@ class IcLoraHandler(StateHandlerBase):
             case _:
                 raise HTTPError(400, f"Unsupported conditioning_type: {conditioning_type}")
 
-    def _require_ic_lora_model_paths(self) -> tuple[Path, Path]:
-        lora_path = resolve_model_path(self.models_dir, self.config.model_download_specs,"ic_lora")
-        depth_model_path = resolve_model_path(self.models_dir, self.config.model_download_specs,"depth_processor")
-        if not lora_path.exists():
-            raise HTTPError(400, f"IC-LoRA model not found: {lora_path}")
-        if not depth_model_path.exists():
-            raise HTTPError(400, f"Depth processor model not found: {depth_model_path}")
+    def _require_ic_lora_model_paths(self, conditioning_type: ConditioningType) -> tuple[Path, Path]:
+        model_id = get_downloaded_ltx_model_id(self.models_dir)
+        if model_id is None:
+            raise HTTPError(409, "NO_DOWNLOADED_LTX_MODEL")
+        ic_loras_spec = get_ltx_model_spec(model_id).ic_loras_spec
+        match conditioning_type:
+            case "canny":
+                lora_cp_id = ic_loras_spec.canny_cp
+            case "depth":
+                lora_cp_id = ic_loras_spec.depth_cp
+            case _:
+                raise HTTPError(400, f"Unsupported conditioning_type: {conditioning_type}")
+        lora_path = get_existing_cp_path(self.models_dir, lora_cp_id)
+        depth_model_path = get_existing_cp_path(self.models_dir, DEPTH_PROCESSOR_CP_ID)
         return lora_path, depth_model_path
 
     def extract_conditioning(self, req: IcLoraExtractRequest) -> IcLoraExtractResponse:
@@ -97,7 +109,7 @@ class IcLoraHandler(StateHandlerBase):
 
         ic_state: ICLoraState | None = None
         if req.conditioning_type == "depth":
-            lora_path, depth_model_path = self._require_ic_lora_model_paths()
+            lora_path, depth_model_path = self._require_ic_lora_model_paths(req.conditioning_type)
             ic_state = self._pipelines.load_ic_lora(
                 str(lora_path),
                 str(depth_model_path),
@@ -130,7 +142,7 @@ class IcLoraHandler(StateHandlerBase):
         video_path = Path(req.video_path)
         if not video_path.exists():
             raise HTTPError(400, f"Video not found: {req.video_path}")
-        lora_path, depth_model_path = self._require_ic_lora_model_paths()
+        lora_path, depth_model_path = self._require_ic_lora_model_paths(req.conditioning_type)
 
         generation_id = uuid.uuid4().hex[:8]
         t_total_start = time.perf_counter()

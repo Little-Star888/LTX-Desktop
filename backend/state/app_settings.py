@@ -45,29 +45,12 @@ class SettingsPatchModel(SettingsBaseModel):
     )
 
 
-class FastModelSettings(SettingsBaseModel):
-    use_upscaler: bool = True
-
-
-class ProModelSettings(SettingsBaseModel):
-    steps: int = 20
-    use_upscaler: bool = True
-
-    @field_validator("steps", mode="before")
-    @classmethod
-    def _clamp_steps(cls, value: Any) -> int:
-        return _clamp_int(value, minimum=1, maximum=100, default=20)
-
-
 class AppSettings(SettingsBaseModel):
     use_torch_compile: bool = False
-    load_on_startup: bool = False
     ltx_api_key: str = ""
     user_prefers_ltx_api_video_generations: bool = False
     fal_api_key: str = ""
     use_local_text_encoder: bool = False
-    fast_model: FastModelSettings = Field(default_factory=FastModelSettings)
-    pro_model: ProModelSettings = Field(default_factory=ProModelSettings)
     prompt_cache_size: int = 100
     prompt_enhancer_enabled_t2v: bool = True
     prompt_enhancer_enabled_i2v: bool = False
@@ -133,13 +116,10 @@ UpdateSettingsRequest = AppSettingsPatch
 
 class SettingsResponse(SettingsBaseModel):
     use_torch_compile: bool = False
-    load_on_startup: bool = False
     has_ltx_api_key: bool = False
     user_prefers_ltx_api_video_generations: bool = False
     has_fal_api_key: bool = False
     use_local_text_encoder: bool = False
-    fast_model: FastModelSettings = Field(default_factory=FastModelSettings)
-    pro_model: ProModelSettings = Field(default_factory=ProModelSettings)
     prompt_cache_size: int = 100
     prompt_enhancer_enabled_t2v: bool = True
     prompt_enhancer_enabled_i2v: bool = False

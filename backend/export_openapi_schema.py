@@ -15,10 +15,7 @@ from typing import Any, cast
 
 from app_factory import create_app
 from app_handler import ServiceBundle
-from runtime_config.model_download_specs import (
-    DEFAULT_MODEL_DOWNLOAD_SPECS,
-    DEFAULT_REQUIRED_MODEL_TYPES,
-)
+from runtime_config.port_constant import PORT
 from state import RuntimeConfig, build_initial_state
 from state.app_settings import AppSettings
 from tests.fake_camera_motion_prompts import FAKE_CAMERA_MOTION_PROMPTS
@@ -40,17 +37,18 @@ def _build_schema() -> dict[str, object]:
 
         config = RuntimeConfig(
             device=torch.device("cpu"),
+            app_data_dir=app_data,
             default_models_dir=default_models_dir,
-            model_download_specs=DEFAULT_MODEL_DOWNLOAD_SPECS,
-            required_model_types=DEFAULT_REQUIRED_MODEL_TYPES,
             outputs_dir=outputs_dir,
             settings_file=app_data / "settings.json",
             ltx_api_base_url="https://api.ltx.video",
-            force_api_generations=False,
+            local_generations_mode="full_models_loading",
             use_sage_attention=False,
             camera_motion_prompts=FAKE_CAMERA_MOTION_PROMPTS,
             default_negative_prompt=DEFAULT_NEGATIVE_PROMPT,
             dev_mode=False,
+            hf_oauth_client_id="test-client-id",
+            backend_port=PORT,
         )
 
         fake = FakeServices()

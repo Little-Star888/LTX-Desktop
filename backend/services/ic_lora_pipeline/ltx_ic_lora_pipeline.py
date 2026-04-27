@@ -20,6 +20,7 @@ class LTXIcLoraPipeline:
         upsampler_path: str,
         lora_path: str,
         device: torch.device,
+        streaming_prefetch_count: int | None,
     ) -> "LTXIcLoraPipeline":
         return LTXIcLoraPipeline(
             checkpoint_path=checkpoint_path,
@@ -27,6 +28,7 @@ class LTXIcLoraPipeline:
             upsampler_path=upsampler_path,
             lora_path=lora_path,
             device=device,
+            streaming_prefetch_count=streaming_prefetch_count,
         )
 
     def __init__(
@@ -36,12 +38,14 @@ class LTXIcLoraPipeline:
         upsampler_path: str,
         lora_path: str,
         device: torch.device,
+        streaming_prefetch_count: int | None,
     ) -> None:
         from ltx_core.loader.primitives import LoraPathStrengthAndSDOps
         from ltx_core.loader.sd_ops import LTXV_LORA_COMFY_RENAMING_MAP
         from ltx_core.quantization import QuantizationPolicy
         from ltx_pipelines.ic_lora import ICLoraPipeline
 
+        self._streaming_prefetch_count = streaming_prefetch_count
         lora_entry = LoraPathStrengthAndSDOps(path=lora_path, strength=1.0, sd_ops=LTXV_LORA_COMFY_RENAMING_MAP)
         self.pipeline = ICLoraPipeline(
             distilled_checkpoint_path=checkpoint_path,
@@ -76,7 +80,7 @@ class LTXIcLoraPipeline:
             images=[_LtxImageInput(img.path, img.frame_idx, img.strength) for img in images],
             video_conditioning=video_conditioning,
             tiling_config=tiling_config,
-            streaming_prefetch_count=2,
+            streaming_prefetch_count=self._streaming_prefetch_count,
         )
 
     @torch.inference_mode()

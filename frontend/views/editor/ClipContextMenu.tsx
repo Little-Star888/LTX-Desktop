@@ -6,7 +6,7 @@ import {
   ChevronLeft, ChevronRight, Sparkles,
   Video, Camera,
 } from 'lucide-react'
-import type { Asset, TimelineClip, Track, TextOverlayStyle } from '../../types/project'
+import type { Asset, TimelineClip, Track, TextOverlayStyle } from '../../types/project-model'
 import { TEXT_PRESETS } from '../../types/project'
 import { COLOR_LABELS } from './video-editor-utils'
 

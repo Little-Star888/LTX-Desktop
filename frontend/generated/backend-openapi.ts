@@ -4,6 +4,74 @@
  */
 
 export interface paths {
+    "/api/auth/huggingface/callback": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Route Hf Callback */
+        get: operations["route_hf_callback_api_auth_huggingface_callback_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/auth/huggingface/login": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Route Hf Login */
+        post: operations["route_hf_login_api_auth_huggingface_login_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/auth/huggingface/logout": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Route Hf Logout */
+        post: operations["route_hf_logout_api_auth_huggingface_logout_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/auth/huggingface/status": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Route Hf Auth Status */
+        get: operations["route_hf_auth_status_api_auth_huggingface_status_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/generate": {
         parameters: {
             query?: never;
@@ -58,6 +126,26 @@ export interface paths {
          * @description POST /api/generate/cancel.
          */
         post: operations["route_generate_cancel_api_generate_cancel_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/generate/models-specs": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Route Generate Model Specs
+         * @description GET /api/generate/models-specs.
+         */
+        get: operations["route_generate_model_specs_api_generate_models_specs_get"];
+        put?: never;
+        post?: never;
         delete?: never;
         options?: never;
         head?: never;
@@ -135,18 +223,35 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/api/models": {
+    "/api/models/check-access": {
         parameters: {
             query?: never;
             header?: never;
             path?: never;
             cookie?: never;
         };
-        /** Route Models List */
-        get: operations["route_models_list_api_models_get"];
+        get?: never;
+        put?: never;
+        /** Route Check Model Access */
+        post: operations["route_check_model_access_api_models_check_access_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/models/delete": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
         put?: never;
         post?: never;
-        delete?: never;
+        /** Route Model Delete */
+        delete: operations["route_model_delete_api_models_delete_delete"];
         options?: never;
         head?: never;
         patch?: never;
@@ -186,15 +291,15 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/api/models/required-models": {
+    "/api/models/img-gen-recommendation": {
         parameters: {
             query?: never;
             header?: never;
             path?: never;
             cookie?: never;
         };
-        /** Route Required Models */
-        get: operations["route_required_models_api_models_required_models_get"];
+        /** Route Img Gen Recommendation */
+        get: operations["route_img_gen_recommendation_api_models_img_gen_recommendation_get"];
         put?: never;
         post?: never;
         delete?: never;
@@ -203,15 +308,49 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/api/models/status": {
+    "/api/models/ltx-ic-lora-recommendation": {
         parameters: {
             query?: never;
             header?: never;
             path?: never;
             cookie?: never;
         };
-        /** Route Models Status */
-        get: operations["route_models_status_api_models_status_get"];
+        /** Route Ltx Ic Lora Recommendation */
+        get: operations["route_ltx_ic_lora_recommendation_api_models_ltx_ic_lora_recommendation_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/models/ltx-recommendation": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Route Ltx Recommendation */
+        get: operations["route_ltx_recommendation_api_models_ltx_recommendation_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/models/text-encoder-recommendation": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Route Text Encoder Recommendation */
+        get: operations["route_text_encoder_recommendation_api_models_text_encoder_recommendation_get"];
         put?: never;
         post?: never;
         delete?: never;
@@ -306,23 +445,6 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/api/text-encoder/download": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        /** Route Text Encoder Download */
-        post: operations["route_text_encoder_download_api_text_encoder_download_post"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
     "/health": {
         parameters: {
             query?: never;
@@ -348,18 +470,14 @@ export interface components {
         AppSettingsPatch: {
             /** Falapikey */
             falApiKey?: string | null;
-            fastModel?: components["schemas"]["FastModelSettingsPatch"] | null;
             /** Geminiapikey */
             geminiApiKey?: string | null;
-            /** Loadonstartup */
-            loadOnStartup?: boolean | null;
             /** Lockedseed */
             lockedSeed?: number | null;
             /** Ltxapikey */
             ltxApiKey?: string | null;
             /** Modelsdir */
             modelsDir?: string | null;
-            proModel?: components["schemas"]["ProModelSettingsPatch"] | null;
             /** Promptcachesize */
             promptCacheSize?: number | null;
             /** Promptenhancerenabledi2V */
@@ -393,6 +511,18 @@ export interface components {
              */
             status: "no_active_generation";
         };
+        /** CheckModelAccessRequest */
+        CheckModelAccessRequest: {
+            /** Cp Ids */
+            cp_ids?: ("ltx-2.3-22b-distilled" | "ltx-2.3-spatial-upscaler-x2-1.0" | "ltx-2.3-22b-ic-lora-union-control-ref0.5" | "dpt-hybrid-midas" | "yolox-l-torchscript" | "dw-ll-ucoco-384-bs5" | "gemma-3-12b-it-qat-q4_0-unquantized" | "z-image-turbo")[];
+        };
+        /** CheckModelAccessResponse */
+        CheckModelAccessResponse: {
+            /** Access */
+            access: {
+                [key: string]: "authorized" | "not_authorized";
+            };
+        };
         /** DownloadProgressCompleteResponse */
         DownloadProgressCompleteResponse: {
             /**
@@ -414,11 +544,11 @@ export interface components {
         /** DownloadProgressRunningResponse */
         DownloadProgressRunningResponse: {
             /** All Files */
-            all_files: ("checkpoint" | "upsampler" | "distilled_lora" | "ic_lora" | "depth_processor" | "person_detector" | "pose_processor" | "text_encoder" | "zit")[];
+            all_files: ("ltx-2.3-22b-distilled" | "ltx-2.3-spatial-upscaler-x2-1.0" | "ltx-2.3-22b-ic-lora-union-control-ref0.5" | "dpt-hybrid-midas" | "yolox-l-torchscript" | "dw-ll-ucoco-384-bs5" | "gemma-3-12b-it-qat-q4_0-unquantized" | "z-image-turbo")[];
             /** Completed Files */
-            completed_files: ("checkpoint" | "upsampler" | "distilled_lora" | "ic_lora" | "depth_processor" | "person_detector" | "pose_processor" | "text_encoder" | "zit")[];
+            completed_files: ("ltx-2.3-22b-distilled" | "ltx-2.3-spatial-upscaler-x2-1.0" | "ltx-2.3-22b-ic-lora-union-control-ref0.5" | "dpt-hybrid-midas" | "yolox-l-torchscript" | "dw-ll-ucoco-384-bs5" | "gemma-3-12b-it-qat-q4_0-unquantized" | "z-image-turbo")[];
             /** Current Downloading File */
-            current_downloading_file: ("checkpoint" | "upsampler" | "distilled_lora" | "ic_lora" | "depth_processor" | "person_detector" | "pose_processor" | "text_encoder" | "zit") | null;
+            current_downloading_file: ("ltx-2.3-22b-distilled" | "ltx-2.3-spatial-upscaler-x2-1.0" | "ltx-2.3-22b-ic-lora-union-control-ref0.5" | "dpt-hybrid-midas" | "yolox-l-torchscript" | "dw-ll-ucoco-384-bs5" | "gemma-3-12b-it-qat-q4_0-unquantized" | "z-image-turbo") | null;
             /** Current File Progress */
             current_file_progress: number;
             /** Error */
@@ -436,19 +566,6 @@ export interface components {
             total_downloaded_bytes: number;
             /** Total Progress */
             total_progress: number;
-        };
-        /** FastModelSettings */
-        FastModelSettings: {
-            /**
-             * Useupscaler
-             * @default true
-             */
-            useUpscaler: boolean;
-        };
-        /** FastModelSettingsPatch */
-        FastModelSettingsPatch: {
-            /** Useupscaler */
-            useUpscaler?: boolean | null;
         };
         /** GenerateImageCancelledResponse */
         GenerateImageCancelledResponse: {
@@ -511,6 +628,13 @@ export interface components {
             /** Video Path */
             video_path: string;
         };
+        /** GenerateVideoModelsSpecsResponse */
+        GenerateVideoModelsSpecsResponse: {
+            /** Api Models */
+            api_models: components["schemas"]["LTXVideoGenerationModelSpecItem"][];
+            /** Local Models */
+            local_models: components["schemas"]["LTXVideoGenerationModelSpecItem"][];
+        };
         /** GenerateVideoRequest */
         GenerateVideoRequest: {
             /**
@@ -534,14 +658,16 @@ export interface components {
             cameraMotion: "none" | "dolly_in" | "dolly_out" | "dolly_left" | "dolly_right" | "jib_up" | "jib_down" | "static" | "focus_shift";
             /**
              * Duration
-             * @default 2
+             * @default 5
+             * @enum {integer}
              */
-            duration: number;
+            duration: 5 | 6 | 8 | 10 | 12 | 14 | 16 | 18 | 20;
             /**
              * Fps
              * @default 24
+             * @enum {integer}
              */
-            fps: number;
+            fps: 24 | 25 | 48 | 50;
             /** Imagepath */
             imagePath?: string | null;
             /**
@@ -609,10 +735,12 @@ export interface components {
             /** Vramused */
             vramUsed: number;
         };
-        /** HTTPValidationError */
-        HTTPValidationError: {
-            /** Detail */
-            detail?: components["schemas"]["ValidationError"][];
+        /** HTTPErrorResponse */
+        HTTPErrorResponse: {
+            /** Code */
+            code: string;
+            /** Message */
+            message: string;
         };
         /** HealthResponse */
         HealthResponse: {
@@ -630,6 +758,37 @@ export interface components {
              * @constant
              */
             status: "ok";
+        };
+        /** HuggingFaceAuthStatusResponse */
+        HuggingFaceAuthStatusResponse: {
+            /**
+             * Status
+             * @enum {string}
+             */
+            status: "authenticated" | "pending" | "not_authenticated";
+        };
+        /** HuggingFaceLoginResponse */
+        HuggingFaceLoginResponse: {
+            /** Client Id */
+            client_id: string;
+            /** Code Challenge */
+            code_challenge: string;
+            /** Code Challenge Method */
+            code_challenge_method: string;
+            /** Redirect Uri */
+            redirect_uri: string;
+            /** Scope */
+            scope: string;
+            /** State */
+            state: string;
+        };
+        /** HuggingFaceLogoutResponse */
+        HuggingFaceLogoutResponse: {
+            /**
+             * Status
+             * @constant
+             */
+            status: "logged_out";
         };
         /** IcLoraExtractRequest */
         IcLoraExtractRequest: {
@@ -728,10 +887,107 @@ export interface components {
              */
             strength: number;
         };
+        /** ImageGenRecommendationResponse */
+        ImageGenRecommendationResponse: {
+            /** Cp To Download */
+            cp_to_download: ("ltx-2.3-22b-distilled" | "ltx-2.3-spatial-upscaler-x2-1.0" | "ltx-2.3-22b-ic-lora-union-control-ref0.5" | "dpt-hybrid-midas" | "yolox-l-torchscript" | "dw-ll-ucoco-384-bs5" | "gemma-3-12b-it-qat-q4_0-unquantized" | "z-image-turbo") | null;
+        };
+        /** LTXVideoGenerationModelSpecItem */
+        LTXVideoGenerationModelSpecItem: {
+            /**
+             * Pipeline
+             * @enum {string}
+             */
+            pipeline: "fast" | "pro";
+            spec: components["schemas"]["LTXVideoGenerationSpec"];
+        };
+        /** LTXVideoGenerationResolutionSpec */
+        LTXVideoGenerationResolutionSpec: {
+            /** Fps To Durations */
+            fps_to_durations: {
+                [key: string]: (5 | 6 | 8 | 10 | 12 | 14 | 16 | 18 | 20)[];
+            };
+        };
+        /** LTXVideoGenerationSpec */
+        LTXVideoGenerationSpec: {
+            /** A2V Supported Resolutions Durations */
+            a2v_supported_resolutions_durations?: {
+                [key: string]: components["schemas"]["LTXVideoGenerationResolutionSpec"];
+            } | null;
+            /** Display Name */
+            display_name: string;
+            /** Supported Resolutions Durations */
+            supported_resolutions_durations: {
+                [key: string]: components["schemas"]["LTXVideoGenerationResolutionSpec"];
+            };
+        };
+        /** LtxDownloadRecommendationResponse */
+        LtxDownloadRecommendationResponse: {
+            /** Cps To Download */
+            cps_to_download: ("ltx-2.3-22b-distilled" | "ltx-2.3-spatial-upscaler-x2-1.0" | "ltx-2.3-22b-ic-lora-union-control-ref0.5" | "dpt-hybrid-midas" | "yolox-l-torchscript" | "dw-ll-ucoco-384-bs5" | "gemma-3-12b-it-qat-q4_0-unquantized" | "z-image-turbo")[];
+            /**
+             * Status
+             * @constant
+             */
+            status: "download";
+        };
+        /** LtxIcLoraRecommendationResponse */
+        LtxIcLoraRecommendationResponse: {
+            /** Cps To Download */
+            cps_to_download: ("ltx-2.3-22b-distilled" | "ltx-2.3-spatial-upscaler-x2-1.0" | "ltx-2.3-22b-ic-lora-union-control-ref0.5" | "dpt-hybrid-midas" | "yolox-l-torchscript" | "dw-ll-ucoco-384-bs5" | "gemma-3-12b-it-qat-q4_0-unquantized" | "z-image-turbo")[];
+        };
+        /** LtxInsufficientFundsErrorResponse */
+        LtxInsufficientFundsErrorResponse: {
+            /**
+             * Code
+             * @constant
+             */
+            code: "LTX_INSUFFICIENT_FUNDS";
+            /** Message */
+            message: string;
+        };
+        /** LtxOkRecommendationResponse */
+        LtxOkRecommendationResponse: {
+            /**
+             * Status
+             * @constant
+             */
+            status: "ok";
+        };
+        /** LtxUpgradeRecommendationResponse */
+        LtxUpgradeRecommendationResponse: {
+            /** Cps To Delete */
+            cps_to_delete: ("ltx-2.3-22b-distilled" | "ltx-2.3-spatial-upscaler-x2-1.0" | "ltx-2.3-22b-ic-lora-union-control-ref0.5" | "dpt-hybrid-midas" | "yolox-l-torchscript" | "dw-ll-ucoco-384-bs5" | "gemma-3-12b-it-qat-q4_0-unquantized" | "z-image-turbo")[];
+            /** Cps To Download */
+            cps_to_download: ("ltx-2.3-22b-distilled" | "ltx-2.3-spatial-upscaler-x2-1.0" | "ltx-2.3-22b-ic-lora-union-control-ref0.5" | "dpt-hybrid-midas" | "yolox-l-torchscript" | "dw-ll-ucoco-384-bs5" | "gemma-3-12b-it-qat-q4_0-unquantized" | "z-image-turbo")[];
+            /**
+             * Ltx Model Id
+             * @constant
+             */
+            ltx_model_id: "ltx-2.3-22b-distilled";
+            /**
+             * Status
+             * @constant
+             */
+            status: "upgrade";
+            /** Upgrade Message */
+            upgrade_message?: string | null;
+        };
+        /** ModelDeleteRequest */
+        ModelDeleteRequest: {
+            /** Cp Ids */
+            cp_ids?: ("ltx-2.3-22b-distilled" | "ltx-2.3-spatial-upscaler-x2-1.0" | "ltx-2.3-22b-ic-lora-union-control-ref0.5" | "dpt-hybrid-midas" | "yolox-l-torchscript" | "dw-ll-ucoco-384-bs5" | "gemma-3-12b-it-qat-q4_0-unquantized" | "z-image-turbo")[];
+        };
         /** ModelDownloadRequest */
         ModelDownloadRequest: {
-            /** Modeltypes */
-            modelTypes?: ("checkpoint" | "upsampler" | "distilled_lora" | "ic_lora" | "depth_processor" | "person_detector" | "pose_processor" | "text_encoder" | "zit")[];
+            /** Cp Ids */
+            cp_ids?: ("ltx-2.3-22b-distilled" | "ltx-2.3-spatial-upscaler-x2-1.0" | "ltx-2.3-22b-ic-lora-union-control-ref0.5" | "dpt-hybrid-midas" | "yolox-l-torchscript" | "dw-ll-ucoco-384-bs5" | "gemma-3-12b-it-qat-q4_0-unquantized" | "z-image-turbo")[];
+            /**
+             * Type
+             * @default download
+             * @enum {string}
+             */
+            type: "download" | "upgrade";
         };
         /** ModelDownloadStartResponse */
         ModelDownloadStartResponse: {
@@ -745,45 +1001,6 @@ export interface components {
              */
             status: "started";
         };
-        /** ModelFileStatus */
-        ModelFileStatus: {
-            /** Description */
-            description: string;
-            /** Downloaded */
-            downloaded: boolean;
-            /** Expected Size */
-            expected_size: number;
-            /**
-             * Id
-             * @enum {string}
-             */
-            id: "checkpoint" | "upsampler" | "distilled_lora" | "ic_lora" | "depth_processor" | "person_detector" | "pose_processor" | "text_encoder" | "zit";
-            /**
-             * Is Folder
-             * @default false
-             */
-            is_folder: boolean;
-            /** Name */
-            name: string;
-            /** Optional Reason */
-            optional_reason?: string | null;
-            /**
-             * Required
-             * @default true
-             */
-            required: boolean;
-            /** Size */
-            size: number;
-        };
-        /** ModelInfo */
-        ModelInfo: {
-            /** Description */
-            description: string;
-            /** Id */
-            id: string;
-            /** Name */
-            name: string;
-        };
         /** ModelStatusItem */
         ModelStatusItem: {
             /** Downloaded */
@@ -794,53 +1011,6 @@ export interface components {
             loaded: boolean;
             /** Name */
             name: string;
-        };
-        /** ModelsStatusResponse */
-        ModelsStatusResponse: {
-            /** All Downloaded */
-            all_downloaded: boolean;
-            /** Downloaded Size */
-            downloaded_size: number;
-            /** Downloaded Size Gb */
-            downloaded_size_gb: number;
-            /** Has Api Key */
-            has_api_key: boolean;
-            /** Models */
-            models: components["schemas"]["ModelFileStatus"][];
-            /** Models Path */
-            models_path: string;
-            text_encoder_status: components["schemas"]["TextEncoderStatus"];
-            /** Total Size */
-            total_size: number;
-            /** Total Size Gb */
-            total_size_gb: number;
-            /** Use Local Text Encoder */
-            use_local_text_encoder: boolean;
-        };
-        /** ProModelSettings */
-        ProModelSettings: {
-            /**
-             * Steps
-             * @default 20
-             */
-            steps: number;
-            /**
-             * Useupscaler
-             * @default true
-             */
-            useUpscaler: boolean;
-        };
-        /** ProModelSettingsPatch */
-        ProModelSettingsPatch: {
-            /** Steps */
-            steps?: number | null;
-            /** Useupscaler */
-            useUpscaler?: boolean | null;
-        };
-        /** RequiredModelsResponse */
-        RequiredModelsResponse: {
-            /** Modeltypes */
-            modelTypes: ("checkpoint" | "upsampler" | "distilled_lora" | "ic_lora" | "depth_processor" | "person_detector" | "pose_processor" | "text_encoder" | "zit")[];
         };
         /** RetakeCancelledResponse */
         RetakeCancelledResponse: {
@@ -899,7 +1069,6 @@ export interface components {
         };
         /** SettingsResponse */
         SettingsResponse: {
-            fastModel?: components["schemas"]["FastModelSettings"];
             /**
              * Hasfalapikey
              * @default false
@@ -916,11 +1085,6 @@ export interface components {
              */
             hasLtxApiKey: boolean;
             /**
-             * Loadonstartup
-             * @default false
-             */
-            loadOnStartup: boolean;
-            /**
              * Lockedseed
              * @default 42
              */
@@ -930,7 +1094,6 @@ export interface components {
              * @default
              */
             modelsDir: string;
-            proModel?: components["schemas"]["ProModelSettings"];
             /**
              * Promptcachesize
              * @default 100
@@ -1013,51 +1176,14 @@ export interface components {
             /** Suggested Prompt */
             suggested_prompt: string;
         };
-        /** TextEncoderAlreadyDownloadedResponse */
-        TextEncoderAlreadyDownloadedResponse: {
-            /** Message */
-            message: string;
-            /**
-             * Status
-             * @constant
-             */
-            status: "already_downloaded";
-        };
-        /** TextEncoderDownloadStartedResponse */
-        TextEncoderDownloadStartedResponse: {
-            /** Message */
-            message: string;
-            /** Sessionid */
-            sessionId: string;
-            /**
-             * Status
-             * @constant
-             */
-            status: "started";
-        };
-        /** TextEncoderStatus */
-        TextEncoderStatus: {
-            /** Downloaded */
-            downloaded: boolean;
+        /** TextEncoderRecommendationResponse */
+        TextEncoderRecommendationResponse: {
+            /** Cp To Download */
+            cp_to_download: ("ltx-2.3-22b-distilled" | "ltx-2.3-spatial-upscaler-x2-1.0" | "ltx-2.3-22b-ic-lora-union-control-ref0.5" | "dpt-hybrid-midas" | "yolox-l-torchscript" | "dw-ll-ucoco-384-bs5" | "gemma-3-12b-it-qat-q4_0-unquantized" | "z-image-turbo") | null;
+            /** Expected Size Bytes */
+            expected_size_bytes: number;
             /** Expected Size Gb */
             expected_size_gb: number;
-            /** Size Bytes */
-            size_bytes: number;
-            /** Size Gb */
-            size_gb: number;
-        };
-        /** ValidationError */
-        ValidationError: {
-            /** Context */
-            ctx?: Record<string, never>;
-            /** Input */
-            input?: unknown;
-            /** Location */
-            loc: (string | number)[];
-            /** Message */
-            msg: string;
-            /** Error Type */
-            type: string;
         };
     };
     responses: never;
@@ -1068,6 +1194,162 @@ export interface components {
 }
 export type $defs = Record<string, never>;
 export interface operations {
+    route_hf_callback_api_auth_huggingface_callback_get: {
+        parameters: {
+            query?: {
+                code?: string;
+                state?: string;
+                error?: string;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "text/html": string;
+                };
+            };
+            /** @description Client Error */
+            "4XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "text/html": components["schemas"]["HTTPErrorResponse"];
+                };
+            };
+            /** @description Server Error */
+            "5XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "text/html": components["schemas"]["HTTPErrorResponse"];
+                };
+            };
+        };
+    };
+    route_hf_login_api_auth_huggingface_login_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HuggingFaceLoginResponse"];
+                };
+            };
+            /** @description Client Error */
+            "4XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPErrorResponse"];
+                };
+            };
+            /** @description Server Error */
+            "5XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPErrorResponse"];
+                };
+            };
+        };
+    };
+    route_hf_logout_api_auth_huggingface_logout_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HuggingFaceLogoutResponse"];
+                };
+            };
+            /** @description Client Error */
+            "4XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPErrorResponse"];
+                };
+            };
+            /** @description Server Error */
+            "5XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPErrorResponse"];
+                };
+            };
+        };
+    };
+    route_hf_auth_status_api_auth_huggingface_status_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HuggingFaceAuthStatusResponse"];
+                };
+            };
+            /** @description Client Error */
+            "4XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPErrorResponse"];
+                };
+            };
+            /** @description Server Error */
+            "5XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPErrorResponse"];
+                };
+            };
+        };
+    };
     route_generate_api_generate_post: {
         parameters: {
             query?: never;
@@ -1090,13 +1372,31 @@ export interface operations {
                     "application/json": components["schemas"]["GenerateVideoCompleteResponse"] | components["schemas"]["GenerateVideoCancelledResponse"];
                 };
             };
-            /** @description Validation Error */
-            422: {
+            /** @description LTX API credits are insufficient for the requested generation */
+            402: {
                 headers: {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
+                    "application/json": components["schemas"]["LtxInsufficientFundsErrorResponse"];
+                };
+            };
+            /** @description Client Error */
+            "4XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPErrorResponse"];
+                };
+            };
+            /** @description Server Error */
+            "5XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPErrorResponse"];
                 };
             };
         };
@@ -1123,13 +1423,22 @@ export interface operations {
                     "application/json": components["schemas"]["GenerateImageCompleteResponse"] | components["schemas"]["GenerateImageCancelledResponse"];
                 };
             };
-            /** @description Validation Error */
-            422: {
+            /** @description Client Error */
+            "4XX": {
                 headers: {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
+                    "application/json": components["schemas"]["HTTPErrorResponse"];
+                };
+            };
+            /** @description Server Error */
+            "5XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPErrorResponse"];
                 };
             };
         };
@@ -1152,6 +1461,62 @@ export interface operations {
                     "application/json": components["schemas"]["CancelCancellingResponse"] | components["schemas"]["CancelNoActiveGenerationResponse"];
                 };
             };
+            /** @description Client Error */
+            "4XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPErrorResponse"];
+                };
+            };
+            /** @description Server Error */
+            "5XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPErrorResponse"];
+                };
+            };
+        };
+    };
+    route_generate_model_specs_api_generate_models_specs_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["GenerateVideoModelsSpecsResponse"];
+                };
+            };
+            /** @description Client Error */
+            "4XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPErrorResponse"];
+                };
+            };
+            /** @description Server Error */
+            "5XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPErrorResponse"];
+                };
+            };
         };
     };
     route_generation_progress_api_generation_progress_get: {
@@ -1172,6 +1537,24 @@ export interface operations {
                     "application/json": components["schemas"]["GenerationProgressResponse"];
                 };
             };
+            /** @description Client Error */
+            "4XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPErrorResponse"];
+                };
+            };
+            /** @description Server Error */
+            "5XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPErrorResponse"];
+                };
+            };
         };
     };
     route_gpu_info_api_gpu_info_get: {
@@ -1190,6 +1573,24 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["GpuInfoResponse"];
+                };
+            };
+            /** @description Client Error */
+            "4XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPErrorResponse"];
+                };
+            };
+            /** @description Server Error */
+            "5XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPErrorResponse"];
                 };
             };
         };
@@ -1216,13 +1617,22 @@ export interface operations {
                     "application/json": components["schemas"]["IcLoraExtractResponse"];
                 };
             };
-            /** @description Validation Error */
-            422: {
+            /** @description Client Error */
+            "4XX": {
                 headers: {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
+                    "application/json": components["schemas"]["HTTPErrorResponse"];
+                };
+            };
+            /** @description Server Error */
+            "5XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPErrorResponse"];
                 };
             };
         };
@@ -1249,25 +1659,38 @@ export interface operations {
                     "application/json": components["schemas"]["IcLoraGenerateCompleteResponse"] | components["schemas"]["IcLoraGenerateCancelledResponse"];
                 };
             };
-            /** @description Validation Error */
-            422: {
+            /** @description Client Error */
+            "4XX": {
                 headers: {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
+                    "application/json": components["schemas"]["HTTPErrorResponse"];
+                };
+            };
+            /** @description Server Error */
+            "5XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPErrorResponse"];
                 };
             };
         };
     };
-    route_models_list_api_models_get: {
+    route_check_model_access_api_models_check_access_post: {
         parameters: {
             query?: never;
             header?: never;
             path?: never;
             cookie?: never;
         };
-        requestBody?: never;
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CheckModelAccessRequest"];
+            };
+        };
         responses: {
             /** @description Successful Response */
             200: {
@@ -1275,7 +1698,67 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["ModelInfo"][];
+                    "application/json": components["schemas"]["CheckModelAccessResponse"];
+                };
+            };
+            /** @description Client Error */
+            "4XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPErrorResponse"];
+                };
+            };
+            /** @description Server Error */
+            "5XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPErrorResponse"];
+                };
+            };
+        };
+    };
+    route_model_delete_api_models_delete_delete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ModelDeleteRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["StatusResponse"];
+                };
+            };
+            /** @description Client Error */
+            "4XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPErrorResponse"];
+                };
+            };
+            /** @description Server Error */
+            "5XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPErrorResponse"];
                 };
             };
         };
@@ -1302,13 +1785,22 @@ export interface operations {
                     "application/json": components["schemas"]["ModelDownloadStartResponse"];
                 };
             };
-            /** @description Validation Error */
-            422: {
+            /** @description Client Error */
+            "4XX": {
                 headers: {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
+                    "application/json": components["schemas"]["HTTPErrorResponse"];
+                };
+            };
+            /** @description Server Error */
+            "5XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPErrorResponse"];
                 };
             };
         };
@@ -1333,49 +1825,27 @@ export interface operations {
                     "application/json": components["schemas"]["DownloadProgressRunningResponse"] | components["schemas"]["DownloadProgressCompleteResponse"] | components["schemas"]["DownloadProgressErrorResponse"];
                 };
             };
-            /** @description Validation Error */
-            422: {
+            /** @description Client Error */
+            "4XX": {
                 headers: {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
+                    "application/json": components["schemas"]["HTTPErrorResponse"];
+                };
+            };
+            /** @description Server Error */
+            "5XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPErrorResponse"];
                 };
             };
         };
     };
-    route_required_models_api_models_required_models_get: {
-        parameters: {
-            query?: {
-                skipTextEncoder?: boolean;
-            };
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["RequiredModelsResponse"];
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    route_models_status_api_models_status_get: {
+    route_img_gen_recommendation_api_models_img_gen_recommendation_get: {
         parameters: {
             query?: never;
             header?: never;
@@ -1390,7 +1860,139 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["ModelsStatusResponse"];
+                    "application/json": components["schemas"]["ImageGenRecommendationResponse"];
+                };
+            };
+            /** @description Client Error */
+            "4XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPErrorResponse"];
+                };
+            };
+            /** @description Server Error */
+            "5XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPErrorResponse"];
+                };
+            };
+        };
+    };
+    route_ltx_ic_lora_recommendation_api_models_ltx_ic_lora_recommendation_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LtxIcLoraRecommendationResponse"];
+                };
+            };
+            /** @description Client Error */
+            "4XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPErrorResponse"];
+                };
+            };
+            /** @description Server Error */
+            "5XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPErrorResponse"];
+                };
+            };
+        };
+    };
+    route_ltx_recommendation_api_models_ltx_recommendation_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LtxDownloadRecommendationResponse"] | components["schemas"]["LtxUpgradeRecommendationResponse"] | components["schemas"]["LtxOkRecommendationResponse"];
+                };
+            };
+            /** @description Client Error */
+            "4XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPErrorResponse"];
+                };
+            };
+            /** @description Server Error */
+            "5XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPErrorResponse"];
+                };
+            };
+        };
+    };
+    route_text_encoder_recommendation_api_models_text_encoder_recommendation_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TextEncoderRecommendationResponse"];
+                };
+            };
+            /** @description Client Error */
+            "4XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPErrorResponse"];
+                };
+            };
+            /** @description Server Error */
+            "5XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPErrorResponse"];
                 };
             };
         };
@@ -1417,13 +2019,22 @@ export interface operations {
                     "application/json": components["schemas"]["RetakeVideoResponse"] | components["schemas"]["RetakePayloadResponse"] | components["schemas"]["RetakeCancelledResponse"];
                 };
             };
-            /** @description Validation Error */
-            422: {
+            /** @description Client Error */
+            "4XX": {
                 headers: {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
+                    "application/json": components["schemas"]["HTTPErrorResponse"];
+                };
+            };
+            /** @description Server Error */
+            "5XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPErrorResponse"];
                 };
             };
         };
@@ -1446,6 +2057,24 @@ export interface operations {
                     "application/json": components["schemas"]["RuntimePolicyResponse"];
                 };
             };
+            /** @description Client Error */
+            "4XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPErrorResponse"];
+                };
+            };
+            /** @description Server Error */
+            "5XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPErrorResponse"];
+                };
+            };
         };
     };
     route_get_settings_api_settings_get: {
@@ -1464,6 +2093,24 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["SettingsResponse"];
+                };
+            };
+            /** @description Client Error */
+            "4XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPErrorResponse"];
+                };
+            };
+            /** @description Server Error */
+            "5XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPErrorResponse"];
                 };
             };
         };
@@ -1490,13 +2137,22 @@ export interface operations {
                     "application/json": components["schemas"]["StatusResponse"];
                 };
             };
-            /** @description Validation Error */
-            422: {
+            /** @description Client Error */
+            "4XX": {
                 headers: {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
+                    "application/json": components["schemas"]["HTTPErrorResponse"];
+                };
+            };
+            /** @description Server Error */
+            "5XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPErrorResponse"];
                 };
             };
         };
@@ -1523,13 +2179,22 @@ export interface operations {
                     "application/json": components["schemas"]["SuggestGapPromptResponse"];
                 };
             };
-            /** @description Validation Error */
-            422: {
+            /** @description Client Error */
+            "4XX": {
                 headers: {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
+                    "application/json": components["schemas"]["HTTPErrorResponse"];
+                };
+            };
+            /** @description Server Error */
+            "5XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPErrorResponse"];
                 };
             };
         };
@@ -1554,24 +2219,22 @@ export interface operations {
                     };
                 };
             };
-        };
-    };
-    route_text_encoder_download_api_text_encoder_download_post: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Successful Response */
-            200: {
+            /** @description Client Error */
+            "4XX": {
                 headers: {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["TextEncoderDownloadStartedResponse"] | components["schemas"]["TextEncoderAlreadyDownloadedResponse"];
+                    "application/json": components["schemas"]["HTTPErrorResponse"];
+                };
+            };
+            /** @description Server Error */
+            "5XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPErrorResponse"];
                 };
             };
         };
@@ -1592,6 +2255,24 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["HealthResponse"];
+                };
+            };
+            /** @description Client Error */
+            "4XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPErrorResponse"];
+                };
+            };
+            /** @description Server Error */
+            "5XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPErrorResponse"];
                 };
             };
         };

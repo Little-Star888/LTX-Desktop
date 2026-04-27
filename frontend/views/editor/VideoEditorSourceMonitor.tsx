@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react'
-import { Play, Pause, Square, SkipBack, SkipForward, ChevronLeft, ChevronRight, Video, Music, X } from 'lucide-react'
-import type { Asset } from '../../types/project'
+import { Play, Pause, Square, SkipBack, SkipForward, ChevronLeft, ChevronRight, Repeat, Video, Music, X } from 'lucide-react'
+import type { Asset } from '../../types/project-model'
 import { formatTime } from './video-editor-utils'
 import { Tooltip } from '../../components/ui/tooltip'
 import { pathToFileUrl } from '../../lib/file-url'
@@ -40,6 +40,16 @@ export interface VideoEditorSourceMonitorHandle {
 type SourceMarker = 'sourceIn' | 'sourceOut' | null
 
 const FRAME_DURATION = 1 / 24
+const LOOP_EPSILON = 0.01
+
+function getLoopRange(sourceIn: number | null, sourceOut: number | null, duration: number) {
+  const start = sourceIn ?? 0
+  const end = sourceOut ?? duration
+
+  return start <= end
+    ? { start, end }
+    : { start: end, end: start }
+}
 
 export const VideoEditorSourceMonitor = React.forwardRef<VideoEditorSourceMonitorHandle>(function VideoEditorSourceMonitor(_props, ref) {
   const {
@@ -56,6 +66,7 @@ export const VideoEditorSourceMonitor = React.forwardRef<VideoEditorSourceMonito
   const [sourceIsPlaying, setSourceIsPlaying] = useState(false)
   const [sourceIn, setSourceIn] = useState<number | null>(null)
   const [sourceOut, setSourceOut] = useState<number | null>(null)
+  const [sourcePlayingInOut, setSourcePlayingInOut] = useState(false)
   const [sourceReversePlaying, setSourceReversePlaying] = useState(false)
   const [draggingMarker, setDraggingMarker] = useState<SourceMarker>(null)
 
@@ -74,6 +85,13 @@ export const VideoEditorSourceMonitor = React.forwardRef<VideoEditorSourceMonito
   const pause = useCallback(() => {
     sourceVideoRef.current?.pause()
     setSourceIsPlaying(false)
+    setSourceReversePlaying(false)
+  }, [])
+
+  const stopPlayback = useCallback(() => {
+    sourceVideoRef.current?.pause()
+    setSourceIsPlaying(false)
+    setSourcePlayingInOut(false)
     setSourceReversePlaying(false)
   }, [])
 
@@ -102,7 +120,15 @@ export const VideoEditorSourceMonitor = React.forwardRef<VideoEditorSourceMonito
           pauseTimelinePlayback()
           stopShuttle()
           if (sourceVideoRef.current) {
-            if (sourceIn !== null && sourceTimeRef.current < sourceIn) {
+            const duration = sourceAsset?.duration || 5
+            const { start: loopStart, end: loopEnd } = getLoopRange(sourceIn, sourceOut, duration)
+            const looping = sourcePlayingInOut
+            if (looping) {
+              if (sourceTimeRef.current < loopStart || sourceTimeRef.current >= loopEnd - LOOP_EPSILON) {
+                sourceVideoRef.current.currentTime = loopStart
+                setSourceTime(loopStart)
+              }
+            } else if (sourceIn !== null && sourceTimeRef.current < sourceIn) {
               sourceVideoRef.current.currentTime = sourceIn
               setSourceTime(sourceIn)
             }
@@ -123,7 +149,7 @@ export const VideoEditorSourceMonitor = React.forwardRef<VideoEditorSourceMonito
         return
       }
       case 'transport.shuttleStop':
-        pause()
+        stopPlayback()
         return
       case 'transport.shuttleForward':
         setSourceReversePlaying(false)
@@ -196,6 +222,9 @@ export const VideoEditorSourceMonitor = React.forwardRef<VideoEditorSourceMonito
     sourceAsset,
     sourceIn,
     sourceIsPlaying,
+    sourceOut,
+    sourcePlayingInOut,
+    stopPlayback,
     stopShuttle,
   ])
 
@@ -203,7 +232,7 @@ export const VideoEditorSourceMonitor = React.forwardRef<VideoEditorSourceMonito
     const nextTime = Math.max(0, opts?.initialTime ?? 0)
     const shouldResetMarks = opts?.resetMarks ?? true
 
-    pause()
+    stopPlayback()
     setSourceAsset(asset)
     setSourceTime(nextTime)
     if (shouldResetMarks) {
@@ -211,7 +240,7 @@ export const VideoEditorSourceMonitor = React.forwardRef<VideoEditorSourceMonito
       setSourceOut(null)
     }
     pendingSeekRef.current = nextTime
-  }, [pause])
+  }, [stopPlayback])
 
   React.useImperativeHandle(ref, () => ({
     openAsset,
@@ -243,20 +272,26 @@ export const VideoEditorSourceMonitor = React.forwardRef<VideoEditorSourceMonito
       return
     }
     const video = sourceVideoRef.current
+    const duration = sourceAsset?.duration || 5
+    const { start: loopStart, end: loopEnd } = getLoopRange(sourceIn, sourceOut, duration)
     const tick = () => {
       setSourceTime(video.currentTime)
-      if (sourceOut !== null && video.currentTime >= sourceOut) {
+      if (sourcePlayingInOut && video.currentTime >= loopEnd - LOOP_EPSILON) {
+        video.currentTime = loopStart
+        setSourceTime(loopStart)
+        video.play().catch(() => {})
+      } else if (!sourcePlayingInOut && sourceOut !== null && video.currentTime >= sourceOut) {
         video.pause()
         setSourceIsPlaying(false)
         setSourceTime(sourceOut)
         return
       }
-      if (!video.paused) sourceAnimRef.current = requestAnimationFrame(tick)
+      if (sourcePlayingInOut || !video.paused) sourceAnimRef.current = requestAnimationFrame(tick)
     }
     video.play().catch(() => {})
     sourceAnimRef.current = requestAnimationFrame(tick)
     return () => cancelAnimationFrame(sourceAnimRef.current)
-  }, [sourceIsPlaying, sourceOut])
+  }, [sourceAsset, sourceIn, sourceIsPlaying, sourceOut, sourcePlayingInOut])
 
   useEffect(() => {
     if (!sourceReversePlaying) {
@@ -270,10 +305,15 @@ export const VideoEditorSourceMonitor = React.forwardRef<VideoEditorSourceMonito
       if (!sourceReversePlaying) return
       if (reverseLastRef.current !== null) {
         const delta = (ts - reverseLastRef.current) / 1000
-        const next = Math.max(0, (sourceVideoRef.current?.currentTime ?? sourceTimeRef.current) - delta)
+        const duration = sourceAsset?.duration || 5
+        const { start: loopStart, end: loopEnd } = getLoopRange(sourceInRef.current, sourceOutRef.current, duration)
+        let next = Math.max(0, (sourceVideoRef.current?.currentTime ?? sourceTimeRef.current) - delta)
+        if (sourcePlayingInOut && next <= loopStart + LOOP_EPSILON) {
+          next = loopEnd
+        }
         if (sourceVideoRef.current) sourceVideoRef.current.currentTime = next
         setSourceTime(next)
-        if (next <= 0) {
+        if (!sourcePlayingInOut && next <= 0) {
           setSourceReversePlaying(false)
           return
         }
@@ -285,7 +325,7 @@ export const VideoEditorSourceMonitor = React.forwardRef<VideoEditorSourceMonito
     return () => {
       if (reverseRafRef.current) cancelAnimationFrame(reverseRafRef.current)
     }
-  }, [sourceReversePlaying])
+  }, [sourceAsset, sourcePlayingInOut, sourceReversePlaying])
 
   useEffect(() => {
     if (!draggingMarker) return
@@ -325,7 +365,7 @@ export const VideoEditorSourceMonitor = React.forwardRef<VideoEditorSourceMonito
         <Tooltip content="Close clip viewer" side="left">
           <button
             onClick={() => {
-              pause()
+              stopPlayback()
               closeSourceMonitor()
             }}
             className="text-zinc-500 hover:text-white"
@@ -353,7 +393,17 @@ export const VideoEditorSourceMonitor = React.forwardRef<VideoEditorSourceMonito
                 onTimeUpdate={() => {
                   if (sourceVideoRef.current) setSourceTime(sourceVideoRef.current.currentTime)
                 }}
-                onEnded={() => setSourceIsPlaying(false)}
+                onEnded={() => {
+                  if (!sourcePlayingInOut || !sourceVideoRef.current) {
+                    setSourceIsPlaying(false)
+                    return
+                  }
+                  const { start: loopStart } = getLoopRange(sourceIn, sourceOut, sourceAsset.duration || 5)
+                  sourceVideoRef.current.currentTime = loopStart
+                  setSourceTime(loopStart)
+                  sourceVideoRef.current.play().catch(() => {})
+                  setSourceIsPlaying(true)
+                }}
                 playsInline
               />
             ) : sourceAsset.type === 'image' ? (
@@ -565,6 +615,32 @@ export const VideoEditorSourceMonitor = React.forwardRef<VideoEditorSourceMonito
                 <line x1="14" y1="12" x2="4" y2="12" />
                 <polyline points="8,8 4,12 8,16" />
               </svg>
+            </button>
+          </Tooltip>
+          <Tooltip content="Loop In/Out" side="top">
+            <button
+              onClick={() => {
+                if (sourcePlayingInOut) {
+                  stopPlayback()
+                  return
+                }
+                const loopStart = sourceIn ?? 0
+                pauseTimelinePlayback()
+                stopShuttle()
+                setSourceReversePlaying(false)
+                setSourcePlayingInOut(true)
+                seekTo(loopStart)
+                if (sourceVideoRef.current) {
+                  sourceVideoRef.current.currentTime = loopStart
+                  sourceVideoRef.current.play().catch(() => {})
+                }
+                setSourceIsPlaying(true)
+              }}
+              className={`h-6 w-6 flex items-center justify-center rounded transition-colors ${
+                sourcePlayingInOut ? 'text-yellow-400 bg-yellow-400/10' : 'text-zinc-500 hover:text-white hover:bg-zinc-800'
+              }`}
+            >
+              <Repeat className="h-3 w-3" />
             </button>
           </Tooltip>
           <div className="w-px h-3 bg-zinc-700 mx-0.5" />

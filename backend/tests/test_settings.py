@@ -13,25 +13,26 @@ from tests.fakes.services import FakeServices
 
 
 class TestGetSettings:
-    def test_default_settings(self, client, default_app_settings):
+    def test_default_settings(self, client, default_app_settings, test_state):
         r = client.get("/api/settings")
         assert r.status_code == 200
         data = r.json()
         assert data["useTorchCompile"] is False
-        assert data["loadOnStartup"] is False
         assert data["hasLtxApiKey"] is False
         assert data["userPrefersLtxApiVideoGenerations"] is False
         assert data["hasFalApiKey"] is False
         assert data["useLocalTextEncoder"] is False
-        assert data["fastModel"] == {"useUpscaler": True}
-        assert data["proModel"] == {"steps": 20, "useUpscaler": True}
         assert data["promptCacheSize"] == 100
         assert data["promptEnhancerEnabledT2V"] is True
         assert data["promptEnhancerEnabledI2V"] is False
         assert data["hasGeminiApiKey"] is False
         assert data["seedLocked"] is False
         assert data["lockedSeed"] == 42
-        assert data["modelsDir"] == ""
+        # When no custom path is set, the response surfaces the runtime default
+        # so the first-run UI can show the install location.
+        assert data["modelsDir"] == str(test_state.config.default_models_dir)
+        assert "fastModel" not in data
+        assert "proModel" not in data
         assert "ltxApiKey" not in data
         assert "falApiKey" not in data
         assert "geminiApiKey" not in data
@@ -56,28 +57,10 @@ class TestPostSettings:
         assert test_state.state.app_settings.use_torch_compile is True
 
     def test_update_multiple_fields(self, client, test_state):
-        r = client.post("/api/settings", json={"useTorchCompile": True, "loadOnStartup": True})
+        r = client.post("/api/settings", json={"useTorchCompile": True, "promptCacheSize": 42})
         assert r.status_code == 200
         assert test_state.state.app_settings.use_torch_compile is True
-        assert test_state.state.app_settings.load_on_startup is True
-
-    def test_update_fast_model(self, client, test_state):
-        r = client.post("/api/settings", json={"fastModel": {"useUpscaler": False}})
-        assert r.status_code == 200
-        assert test_state.state.app_settings.fast_model.use_upscaler is False
-
-    def test_update_pro_model(self, client, test_state):
-        r = client.post("/api/settings", json={"proModel": {"steps": 30, "useUpscaler": False}})
-        assert r.status_code == 200
-        assert test_state.state.app_settings.pro_model.steps == 30
-        assert test_state.state.app_settings.pro_model.use_upscaler is False
-
-    def test_deep_partial_patch_preserves_nested_fields(self, client, test_state):
-        assert test_state.state.app_settings.pro_model.use_upscaler is True
-        r = client.post("/api/settings", json={"proModel": {"steps": 30}})
-        assert r.status_code == 200
-        assert test_state.state.app_settings.pro_model.steps == 30
-        assert test_state.state.app_settings.pro_model.use_upscaler is True
+        assert test_state.state.app_settings.prompt_cache_size == 42
 
     def test_prompt_cache_size_clamped_max(self, client, test_state):
         r = client.post("/api/settings", json={"promptCacheSize": 5000})
@@ -232,12 +215,13 @@ class TestSettingsPersistence:
         )
         return build_initial_state(test_state.config, default_app_settings.model_copy(deep=True), service_bundle=bundle)
 
-    def test_load_settings_clamps_from_disk(self, test_state, default_app_settings):
+    def test_load_settings_clamps_from_disk_and_ignores_removed_fields(self, test_state, default_app_settings):
         test_state.config.settings_file.write_text(
             json.dumps(
                 {
                     "prompt_cache_size": 5000,
                     "locked_seed": -55,
+                    "fast_model": {"use_upscaler": False},
                     "pro_model": {"steps": 999},
                 }
             ),
@@ -247,7 +231,8 @@ class TestSettingsPersistence:
         loaded = self._new_state(test_state, default_app_settings)
         assert loaded.state.app_settings.prompt_cache_size == 1000
         assert loaded.state.app_settings.locked_seed == 0
-        assert loaded.state.app_settings.pro_model.steps == 100
+        assert "fast_model" not in loaded.state.app_settings.model_dump(by_alias=False)
+        assert "pro_model" not in loaded.state.app_settings.model_dump(by_alias=False)
 
     def test_legacy_prompt_enhancer_key_migrates(self, test_state, default_app_settings):
         test_state.config.settings_file.write_text(

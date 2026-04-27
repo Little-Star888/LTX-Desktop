@@ -15,11 +15,23 @@ class LTXRetakeResult:
 
 
 class LTXAPIClientError(RuntimeError):
-    def __init__(self, status_code: int, detail: str, stage: str | None = None) -> None:
+    def __init__(
+        self,
+        status_code: int,
+        detail: str,
+        stage: str | None = None,
+        *,
+        provider_error_type: str | None = None,
+        provider_message: str | None = None,
+        request_id: str | None = None,
+    ) -> None:
         super().__init__(detail)
         self.status_code = status_code
         self.detail = detail
         self.stage = stage
+        self.provider_error_type = provider_error_type
+        self.provider_message = provider_message
+        self.request_id = request_id
 
 
 class LTXAPIClient(Protocol):

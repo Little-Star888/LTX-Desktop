@@ -10,6 +10,7 @@ from handlers import (
     DownloadHandler,
     GenerationHandler,
     HealthHandler,
+    HuggingFaceAuthHandler,
     IcLoraHandler,
     ImageGenerationHandler,
     ModelsHandler,
@@ -40,7 +41,7 @@ from services.interfaces import (
     TextEncoder,
     VideoProcessor,
 )
-from state.app_state_types import AppState, StartupPending, TextEncoderState
+from state.app_state_types import AppState, TextEncoderState
 
 
 class AppHandler:
@@ -89,23 +90,11 @@ class AppHandler:
         self._lock = threading.RLock()
 
         self.state = AppState(
-            available_files={
-                "checkpoint": None,
-                "upsampler": None,
-                "distilled_lora": None,
-                "ic_lora": None,
-                "depth_processor": None,
-                "person_detector": None,
-                "pose_processor": None,
-                "text_encoder": None,
-                "zit": None,
-            },
             downloading_session=None,
             gpu_slot=None,
             active_generation=None,
             cpu_slot=None,
             text_encoder=TextEncoderState(service=text_encoder),
-            startup=StartupPending(message="Not started"),
             app_settings=default_settings.model_copy(deep=True),
         )
 
@@ -118,9 +107,14 @@ class AppHandler:
             lock=self._lock,
             config=config,
         )
-        self.settings.load_settings(default_settings)
 
         self.models = ModelsHandler(
+            state=self.state,
+            lock=self._lock,
+            config=config,
+        )
+
+        self.hf_auth = HuggingFaceAuthHandler(
             state=self.state,
             lock=self._lock,
             config=config,
@@ -181,7 +175,6 @@ class AppHandler:
             state=self.state,
             lock=self._lock,
             models_handler=self.models,
-            pipelines_handler=self.pipelines,
             gpu_info=gpu_info,
             config=config,
         )
@@ -216,7 +209,13 @@ class AppHandler:
         )
 
         self.downloads.cleanup_downloading_dir()
-        self.models.refresh_available_files()
+
+        self.load_persistent_state(default_settings)
+
+    def load_persistent_state(self, default_settings: AppSettings) -> None:
+        """Load persisted state from disk (settings, HF auth token, etc.)."""
+        self.settings.load_settings(default_settings)
+        self.hf_auth.load_token()
 
 
 @dataclass

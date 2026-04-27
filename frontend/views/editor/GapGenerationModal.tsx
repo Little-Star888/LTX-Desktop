@@ -7,6 +7,7 @@ import { pathToFileUrl } from '../../lib/file-url'
 import { SettingsPanel } from '../../components/SettingsPanel'
 import type { GenerationSettings } from '../../components/SettingsPanel'
 import type { GenerationMode } from '../../components/SettingsPanel'
+import type { VideoGenerationModelSpecItem } from '../../lib/video-generation-model-specs'
 
 interface TimelineGap {
   trackIndex: number
@@ -30,6 +31,9 @@ interface GapGenerationModalProps {
   gapAfterFrame: string | null
   gapSettings: GenerationSettings
   setGapSettings: (settings: GenerationSettings) => void
+  gapVideoModelSpecs: VideoGenerationModelSpecItem[]
+  gapVideoSettingsMessage?: string | null
+  gapCanGenerateVideo: boolean
   gapImageFile: File | null
   setGapImageFile: (file: File | null) => void
   gapImageInputRef: React.RefObject<HTMLInputElement>
@@ -59,6 +63,9 @@ export function GapGenerationModal({
   gapAfterFrame,
   gapSettings,
   setGapSettings,
+  gapVideoModelSpecs,
+  gapVideoSettingsMessage,
+  gapCanGenerateVideo,
   gapImageFile,
   setGapImageFile,
   gapImageInputRef,
@@ -405,6 +412,10 @@ export function GapGenerationModal({
                   onSettingsChange={setGapSettings}
                   disabled={isRegenerating}
                   mode={settingsMode}
+                  videoModelSpecs={gapVideoModelSpecs}
+                  minimumDuration={selectedGap.endTime - selectedGap.startTime}
+                  hideDuration={isVideoMode}
+                  videoSettingsMessage={gapVideoSettingsMessage}
                 />
               </div>
 
@@ -470,7 +481,7 @@ export function GapGenerationModal({
               </button>
               <button
                 onClick={handleGapGenerate}
-                disabled={isRegenerating || !gapPrompt.trim()}
+                disabled={isRegenerating || !gapPrompt.trim() || (isVideoMode && !gapCanGenerateVideo)}
                 className="px-4 py-1.5 rounded-md bg-blue-600 text-white text-sm hover:bg-blue-500 transition-colors font-medium disabled:opacity-40 disabled:cursor-not-allowed flex items-center gap-1.5"
               >
                 {isRegenerating ? (

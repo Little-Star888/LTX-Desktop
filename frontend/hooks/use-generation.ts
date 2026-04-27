@@ -1,6 +1,7 @@
 import { useState, useCallback, useRef } from 'react'
 import type { GenerationSettings } from '../components/SettingsPanel'
-import { ApiClient } from '../lib/api-client'
+import { ApiClient, type ApiRequestBodyOf } from '../lib/api-client'
+import { createLocalGenerationError, type GenerationError } from '../lib/generation-errors'
 import { useAppSettings } from '../contexts/AppSettingsContext'
 
 interface GenerationState {
@@ -10,11 +11,11 @@ interface GenerationState {
   videoPath: string | null
   imagePath: string | null
   imagePaths: string[]
-  error: string | null
+  error: GenerationError | null
 }
 
-type GenerateVideoRequest = Parameters<typeof ApiClient.generateVideo>[0]
-type GenerateImageRequest = Parameters<typeof ApiClient.generateImage>[0]
+type GenerateVideoRequest = ApiRequestBodyOf<'generateVideo'>
+type GenerateImageRequest = ApiRequestBodyOf<'generateImage'>
 
 interface UseGenerationReturn extends GenerationState {
   generate: (prompt: string, imagePath: string | null, settings: GenerationSettings, audioPath?: string | null) => Promise<void>
@@ -147,51 +148,57 @@ export function useGeneration(): UseGenerationReturn {
       
       const pollProgress = async () => {
         if (!shouldApplyPollingUpdates) return
-        try {
-          const data = await ApiClient.getGenerationProgress()
-          if (!shouldApplyPollingUpdates) return
+        const result = await ApiClient.getGenerationProgress()
+        if (!result.ok || !shouldApplyPollingUpdates) return
 
-          let displayProgress = data.progress
-          let statusMessage = getPhaseMessage(data.phase)
-          
-          // Time-based interpolation during inference phase
-          if (data.phase === 'inference') {
-            if (lastPhase !== 'inference') {
-              inferenceStartTime = Date.now()
-            }
-            const elapsed = (Date.now() - inferenceStartTime) / 1000
-            // Interpolate from 15% to 95% based on estimated time
-            const inferenceProgress = Math.min(elapsed / estimatedInferenceTime, 0.95)
-            displayProgress = 15 + Math.floor(inferenceProgress * 80)
-          }
+        const data = result.data
+        let displayProgress = data.progress
+        let statusMessage = getPhaseMessage(data.phase)
 
-          // Keep API/local completion as a terminal response state, not polling state.
-          // Polling complete means backend state is finalized, but request can still be in-flight.
-          if (data.phase === 'complete' || data.status === 'complete') {
-            displayProgress = 95
-            statusMessage = 'Finalizing...'
+        // Time-based interpolation during inference phase
+        if (data.phase === 'inference') {
+          if (lastPhase !== 'inference') {
+            inferenceStartTime = Date.now()
           }
-          
-          lastPhase = data.phase
-          
-          setState(prev => ({
-            ...prev,
-            progress: displayProgress,
-            statusMessage,
-          }))
-        } catch {
-          // Ignore polling errors
+          const elapsed = (Date.now() - inferenceStartTime) / 1000
+          // Interpolate from 15% to 95% based on estimated time
+          const inferenceProgress = Math.min(elapsed / estimatedInferenceTime, 0.95)
+          displayProgress = 15 + Math.floor(inferenceProgress * 80)
         }
+
+        // Keep API/local completion as a terminal response state, not polling state.
+        // Polling complete means backend state is finalized, but request can still be in-flight.
+        if (data.phase === 'complete' || data.status === 'complete') {
+          displayProgress = 95
+          statusMessage = 'Finalizing...'
+        }
+
+        lastPhase = data.phase
+
+        setState(prev => ({
+          ...prev,
+          progress: displayProgress,
+          statusMessage,
+        }))
       }
       
       progressInterval = setInterval(pollProgress, 500)
 
       // Start generation (HTTP POST - synchronous, returns when done)
-      const payload = await ApiClient.generateVideo(body as unknown as GenerateVideoRequest, {
+      const result = await ApiClient.generateVideo(body as unknown as GenerateVideoRequest, {
         signal: abortControllerRef.current.signal,
       })
       shouldApplyPollingUpdates = false
+      if (!result.ok) {
+        setState(prev => ({
+          ...prev,
+          isGenerating: false,
+          error: result,
+        }))
+        return
+      }
 
+      const payload = result.data
       if (payload.status === 'complete') {
         setState({
           isGenerating: false,
@@ -223,7 +230,7 @@ export function useGeneration(): UseGenerationReturn {
         setState(prev => ({
           ...prev,
           isGenerating: false,
-          error: error instanceof Error ? error.message : 'Unknown error',
+          error: createLocalGenerationError(error instanceof Error ? error.message : 'Unknown error'),
         }))
       }
     } finally {
@@ -239,11 +246,7 @@ export function useGeneration(): UseGenerationReturn {
     abortControllerRef.current?.abort()
     
     // Also tell the backend to cancel
-    try {
-      await ApiClient.cancelGeneration()
-    } catch {
-      // Ignore errors from cancel request
-    }
+    void ApiClient.cancelGeneration()
     
     setState(prev => ({
       ...prev,
@@ -257,9 +260,9 @@ export function useGeneration(): UseGenerationReturn {
     settings: GenerationSettings
   ) => {
     if (forceApiGenerations) {
-      try {
-        const payload = await ApiClient.getSettings()
-        if (!payload.hasFalApiKey) {
+      const settingsResult = await ApiClient.getSettings()
+      if (settingsResult.ok) {
+        if (!settingsResult.data.hasFalApiKey) {
           void refreshSettings()
           window.dispatchEvent(new CustomEvent('open-api-gateway', {
             detail: {
@@ -271,7 +274,7 @@ export function useGeneration(): UseGenerationReturn {
           }))
           return
         }
-      } catch {
+      } else {
         if (!appSettings.hasFalApiKey) {
           window.dispatchEvent(new CustomEvent('open-api-gateway', {
             detail: {
@@ -309,26 +312,25 @@ export function useGeneration(): UseGenerationReturn {
 
       // Poll for progress
       const pollProgress = async () => {
-        try {
-          const data = await ApiClient.getGenerationProgress()
-          const currentImage = data.currentStep || 0
-          const totalImages = data.totalSteps || numImages
-          setState(prev => ({
-            ...prev,
-            progress: data.progress,
-            statusMessage: data.phase === 'loading_model' 
-              ? 'Loading Z-Image Turbo model...' 
-              : data.phase === 'inference'
-                ? numImages > 1 
-                  ? `Generating image ${currentImage + 1}/${totalImages}...`
-                  : 'Generating image...'
-                : data.phase === 'complete'
-                  ? 'Complete!'
-                  : 'Generating...',
-          }))
-        } catch {
-          // Ignore polling errors
-        }
+        const result = await ApiClient.getGenerationProgress()
+        if (!result.ok) return
+
+        const data = result.data
+        const currentImage = data.currentStep || 0
+        const totalImages = data.totalSteps || numImages
+        setState(prev => ({
+          ...prev,
+          progress: data.progress,
+          statusMessage: data.phase === 'loading_model'
+            ? 'Loading Z-Image Turbo model...'
+            : data.phase === 'inference'
+              ? numImages > 1
+                ? `Generating image ${currentImage + 1}/${totalImages}...`
+                : 'Generating image...'
+              : data.phase === 'complete'
+                ? 'Complete!'
+                : 'Generating...',
+        }))
       }
       
       const progressInterval = setInterval(pollProgress, 500)
@@ -340,12 +342,21 @@ export function useGeneration(): UseGenerationReturn {
         numSteps,
         numImages,
       }
-      const payload = await ApiClient.generateImage(imageRequest, {
+      const result = await ApiClient.generateImage(imageRequest, {
         signal: abortControllerRef.current.signal,
       })
 
       clearInterval(progressInterval)
+      if (!result.ok) {
+        setState(prev => ({
+          ...prev,
+          isGenerating: false,
+          error: result,
+        }))
+        return
+      }
 
+      const payload = result.data
       if (payload.status === 'complete') {
         const rawPaths = payload.image_paths
         if (rawPaths.length === 0) {
@@ -382,7 +393,7 @@ export function useGeneration(): UseGenerationReturn {
         setState(prev => ({
           ...prev,
           isGenerating: false,
-          error: error instanceof Error ? error.message : 'Unknown error',
+          error: createLocalGenerationError(error instanceof Error ? error.message : 'Unknown error'),
         }))
       }
     }

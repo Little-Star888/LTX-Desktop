@@ -1,6 +1,6 @@
 import React, { type RefObject } from 'react'
 import { Plus, Copy, Eye, Trash2 } from 'lucide-react'
-import type { Asset, AssetTake } from '../../types/project'
+import type { Asset, AssetTake } from '../../types/project-model'
 import { useEditorActions } from './editor-store'
 
 export interface TakeContextMenuProps {

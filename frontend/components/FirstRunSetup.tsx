@@ -1,6 +1,9 @@
-import { useState, useEffect } from 'react'
-import { ApiClient } from '../lib/api-client'
+import { useState, useEffect, useRef, useCallback } from 'react'
+import { ApiClient, type ApiRequestBodyOf, type ApiSuccessOf } from '../lib/api-client'
 import { logger } from '../lib/logger'
+import { useHfAuth } from '../hooks/use-hf-auth'
+import { useHfModelAccess } from '../hooks/use-hf-model-access'
+import { useAppSettings } from '../contexts/AppSettingsContext'
 import './FirstRunSetup.css'
 
 interface LaunchGateProps {
@@ -11,6 +14,15 @@ interface LaunchGateProps {
 }
 
 type Step = 'license' | 'location' | 'installing' | 'complete'
+type StartModelDownloadBody = NonNullable<ApiRequestBodyOf<'startModelDownload'>>
+type ModelCheckpointID = NonNullable<StartModelDownloadBody['cp_ids']>[number]
+type LtxRecommendation = ApiSuccessOf<'getLtxRecommendation'>
+type ImgGenRecommendation = ApiSuccessOf<'getImgGenRecommendation'>
+type DownloadProgress = ApiSuccessOf<'getModelDownloadProgress'>
+type DownloadStepSpec = {
+  type: StartModelDownloadBody['type']
+  cpIds: ModelCheckpointID[]
+}
 
 // Fun loading messages
 const INSTALL_MESSAGES = [
@@ -24,6 +36,41 @@ const INSTALL_MESSAGES = [
   "Finalizing installation..."
 ]
 
+function uniqueCpIds(cpIds: readonly ModelCheckpointID[]): ModelCheckpointID[] {
+  return [...new Set(cpIds)]
+}
+
+function buildAccessCheckpointIds(
+  ltxRecommendation: LtxRecommendation | null,
+  imgGenRecommendation: ImgGenRecommendation | null,
+): ModelCheckpointID[] {
+  if (!ltxRecommendation || !imgGenRecommendation) return []
+
+  const cpIds: ModelCheckpointID[] = []
+  if (ltxRecommendation.status === 'download') {
+    cpIds.push(...ltxRecommendation.cps_to_download)
+  }
+  if (imgGenRecommendation.cp_to_download) {
+    cpIds.push(imgGenRecommendation.cp_to_download)
+  }
+  return uniqueCpIds(cpIds)
+}
+
+function buildDownloadSteps(
+  ltxRecommendation: LtxRecommendation,
+  imgGenRecommendation: ImgGenRecommendation,
+): DownloadStepSpec[] {
+  const cpIds: ModelCheckpointID[] = []
+  if (ltxRecommendation.status === 'download') {
+    cpIds.push(...ltxRecommendation.cps_to_download)
+  }
+  if (imgGenRecommendation.cp_to_download) {
+    cpIds.push(imgGenRecommendation.cp_to_download)
+  }
+  const unique = uniqueCpIds(cpIds)
+  return unique.length > 0 ? [{ type: 'download', cpIds: unique }] : []
+}
+
 
 export function LaunchGate({
   licenseOnly,
@@ -33,7 +80,7 @@ export function LaunchGate({
 }: LaunchGateProps) {
   const [currentStep, setCurrentStep] = useState<Step>(showLicenseStep ? 'license' : 'location')
   const [installPath, setInstallPath] = useState('')
-  const [downloadProgress, setDownloadProgress] = useState<Awaited<ReturnType<typeof ApiClient.getModelDownloadProgress>> | null>(null)
+  const [downloadProgress, setDownloadProgress] = useState<DownloadProgress | null>(null)
   const [downloadError, setDownloadError] = useState<string | null>(null)
   const [downloadSessionId, setDownloadSessionId] = useState<string | null>(null)
   const [installMessage, setInstallMessage] = useState(INSTALL_MESSAGES[0])
@@ -45,6 +92,12 @@ export function LaunchGate({
   const [licenseError, setLicenseError] = useState<string | null>(null)
   const [actionError, setActionError] = useState<string | null>(null)
   const [isActionPending, setIsActionPending] = useState(false)
+  const [requiredCheckpointIds, setRequiredCheckpointIds] = useState<ModelCheckpointID[]>([])
+  const { hfAuthStatus, hfAuthPolling, startHuggingFaceLogin } = useHfAuth(currentStep === 'location')
+  const { accessMap, allAuthorized } = useHfModelAccess(requiredCheckpointIds, hfAuthStatus)
+  const { saveLtxApiKey } = useAppSettings()
+  const modelAccessRef = useRef<HTMLDivElement>(null)
+  const downloadQueueRef = useRef<DownloadStepSpec[]>([])
   const runningDownloadProgress = downloadProgress?.status === 'downloading' ? downloadProgress : null
   const totalProgress = runningDownloadProgress?.total_progress ?? (downloadProgress?.status === 'complete' ? 100 : 0)
 
@@ -86,6 +139,49 @@ export function LaunchGate({
     }
   }
 
+  const refreshModelRecommendations = useCallback(async () => {
+    if (licenseOnly) return
+
+    const [settingsResult, ltxResult, imgGenResult] = await Promise.all([
+      ApiClient.getSettings(),
+      ApiClient.getLtxRecommendation(),
+      ApiClient.getImgGenRecommendation(),
+    ])
+    if (!settingsResult.ok) {
+      logger.error(`Failed to fetch model recommendations: ${settingsResult.error.message}`)
+      return
+    }
+    if (!ltxResult.ok) {
+      logger.error(`Failed to fetch model recommendations: ${ltxResult.error.message}`)
+      return
+    }
+    if (!imgGenResult.ok) {
+      logger.error(`Failed to fetch model recommendations: ${imgGenResult.error.message}`)
+      return
+    }
+
+    setInstallPath(settingsResult.data.modelsDir ?? '')
+    setRequiredCheckpointIds(buildAccessCheckpointIds(ltxResult.data, imgGenResult.data))
+  }, [licenseOnly])
+
+  const startDownloadStep = useCallback(async (step: DownloadStepSpec) => {
+    setDownloadProgress(null)
+    setDownloadError(null)
+    const result = await ApiClient.startModelDownload({
+      type: step.type,
+      cp_ids: step.cpIds,
+    })
+    if (!result.ok) {
+      throw new Error(result.error.message)
+    }
+    const downloadData = result.data
+    if (downloadData.status === 'started') {
+      setDownloadSessionId(downloadData.sessionId)
+      return
+    }
+    throw new Error('Unexpected response while starting model download.')
+  }, [])
+
   // Initialize
   useEffect(() => {
     const init = async () => {
@@ -101,15 +197,7 @@ export function LaunchGate({
           setVideoPath('/splash/splash.mp4')
         }
 
-        // Get models path from backend
-        try {
-          const data = await ApiClient.getModelsStatus()
-          if (data.models_path) {
-            setInstallPath(data.models_path)
-          }
-        } catch (e) {
-          logger.error(`Failed to get models path: ${e}`)
-        }
+        await refreshModelRecommendations()
 
         // TODO: Get actual available space
         setAvailableSpace('1.8 TB')
@@ -121,7 +209,14 @@ export function LaunchGate({
     if (showLicenseStep) {
       void fetchLicense()
     }
-  }, [showLicenseStep])
+  }, [refreshModelRecommendations, showLicenseStep])
+
+  // Auto-scroll to model access section when it appears
+  useEffect(() => {
+    if (hfAuthStatus === 'authenticated' && Object.keys(accessMap).length > 0 && !allAuthorized) {
+      modelAccessRef.current?.scrollIntoView({ behavior: 'smooth', block: 'nearest' })
+    }
+  }, [hfAuthStatus, accessMap, allAuthorized])
 
   // Cycle install messages
   useEffect(() => {
@@ -139,53 +234,67 @@ export function LaunchGate({
     if (currentStep !== 'installing' || !downloadSessionId) return
 
     const pollProgress = async () => {
-      try {
-        const progress = await ApiClient.getModelDownloadProgress({ sessionId: downloadSessionId })
-        setDownloadProgress(progress)
+      const result = await ApiClient.getModelDownloadProgress({ sessionId: downloadSessionId })
+      if (!result.ok) {
+        logger.error(`Progress poll error: ${result.error.message}`)
+        return
+      }
 
-        if (progress.status === 'error') {
-          setDownloadError(progress.error || 'Download failed.')
-        } else if (progress.status === 'complete') {
-          setTimeout(() => setCurrentStep('complete'), 600)
+      const progress = result.data
+      setDownloadProgress(progress)
+
+      if (progress.status === 'error') {
+        downloadQueueRef.current = []
+        setDownloadError(progress.error || 'Download failed.')
+      } else if (progress.status === 'complete') {
+        const nextStep = downloadQueueRef.current.shift() ?? null
+        if (nextStep) {
+          await startDownloadStep(nextStep)
+          return
         }
-      } catch (e) {
-        logger.error(`Progress poll error: ${e}`)
+        setTimeout(() => setCurrentStep('complete'), 600)
       }
     }
 
     pollProgress()
     const interval = setInterval(pollProgress, 500)
     return () => clearInterval(interval)
-  }, [currentStep, downloadSessionId])
+  }, [currentStep, downloadSessionId, startDownloadStep])
 
   // Start installation
   const startInstallation = async () => {
     setCurrentStep('installing')
     try {
-      // If API key is provided, save it to settings first and skip text encoder download
       if (ltxApiKey.trim()) {
         try {
-          await ApiClient.updateSettings({ ltxApiKey: ltxApiKey.trim() })
+          await saveLtxApiKey(ltxApiKey.trim())
         } catch (e) {
-          logger.error(`Failed to save API key: ${e}`)
+          logger.error(`Failed to save API key: ${e instanceof Error ? e.message : String(e)}`)
         }
       }
 
-      // Start download - skip text encoder if API key is provided
-      const skipTextEncoder = !!ltxApiKey.trim()
-      let requiredModels: Awaited<ReturnType<typeof ApiClient.getRequiredModels>> = { modelTypes: [] } as Awaited<ReturnType<typeof ApiClient.getRequiredModels>>
-      try {
-        requiredModels = await ApiClient.getRequiredModels({ skipTextEncoder })
-      } catch (e) {
-        logger.error(`Failed to fetch required models; falling back to empty set: ${e}`)
+      const [ltxResult, imgGenResult] = await Promise.all([
+        ApiClient.getLtxRecommendation(),
+        ApiClient.getImgGenRecommendation(),
+      ])
+      if (!ltxResult.ok) {
+        throw new Error(ltxResult.error.message)
+      }
+      if (!imgGenResult.ok) {
+        throw new Error(imgGenResult.error.message)
+      }
+      const nextLtxRecommendation = ltxResult.data
+      const nextImgGenRecommendation = imgGenResult.data
+      setRequiredCheckpointIds(buildAccessCheckpointIds(nextLtxRecommendation, nextImgGenRecommendation))
+
+      const downloadSteps = buildDownloadSteps(nextLtxRecommendation, nextImgGenRecommendation)
+      if (downloadSteps.length === 0) {
+        setCurrentStep('complete')
+        return
       }
 
-      const downloadData = await ApiClient.startModelDownload({
-        modelTypes: requiredModels.modelTypes,
-      })
-      if (downloadData.status === 'started') {
-        setDownloadSessionId(downloadData.sessionId)
-      }
+      downloadQueueRef.current = downloadSteps.slice(1)
+      await startDownloadStep(downloadSteps[0])
     } catch (e) {
       logger.error(`Download start error: ${e}`)
       setDownloadError(e instanceof Error ? e.message : 'Failed to start model download.')
@@ -194,6 +303,7 @@ export function LaunchGate({
 
   const retryInstallation = () => {
     setDownloadError(null)
+    downloadQueueRef.current = []
     startInstallation()
   }
 
@@ -251,6 +361,7 @@ export function LaunchGate({
   // Check if next button should be disabled
   const isNextDisabled = () => {
     if (currentStep === 'license') return !licenseAccepted || isActionPending
+    if (currentStep === 'location') return hfAuthStatus !== 'authenticated' || !allAuthorized
     if (currentStep === 'complete') return isActionPending
     return false
   }
@@ -433,7 +544,7 @@ export function LaunchGate({
 
           {/* Step 2: Choose Location */}
           {currentStep === 'location' && (
-            <div style={{ animation: 'fadeIn 0.25s ease' }}>
+            <div style={{ animation: 'fadeIn 0.25s ease', overflowY: 'auto', flex: 1, minHeight: 0 }}>
               <h2 style={{
                 fontFamily: "'Miriam Libre', serif",
                 fontSize: 24,
@@ -548,6 +659,115 @@ export function LaunchGate({
                   )}
                 </p>
               </div>
+
+              {/* HuggingFace Authentication */}
+              {window.electronAPI.hfGatingEnabled && (
+              <div style={{
+                marginTop: 24,
+                background: '#2e3445',
+                borderRadius: 12,
+                padding: '14px 18px'
+              }}>
+                <div style={{ marginBottom: 8 }}>
+                  <label style={{ fontSize: 13, fontWeight: 600, color: '#ffffff' }}>
+                    HuggingFace Account
+                    <span style={{
+                      fontSize: 11,
+                      color: hfAuthStatus === 'authenticated' ? '#22c55e' : '#f59e0b',
+                      marginLeft: 8,
+                      fontWeight: 400
+                    }}>
+                      {hfAuthStatus === 'authenticated' ? 'Signed in' : 'Required'}
+                    </span>
+                  </label>
+                </div>
+                {hfAuthStatus === 'authenticated' ? (
+                  <p style={{ fontSize: 12, color: '#22c55e' }}>
+                    ✓ Authenticated — ready to download models.
+                  </p>
+                ) : (
+                  <>
+                    <p style={{ fontSize: 11, color: '#888', marginBottom: 12 }}>
+                      Sign in to HuggingFace to download model files.
+                    </p>
+                    <button
+                      onClick={startHuggingFaceLogin}
+                      disabled={hfAuthPolling}
+                      style={{
+                        padding: '10px 28px',
+                        borderRadius: 9999,
+                        fontSize: 13,
+                        fontWeight: 600,
+                        cursor: hfAuthPolling ? 'default' : 'pointer',
+                        background: hfAuthPolling ? '#333' : '#4f46e5',
+                        border: 'none',
+                        color: '#ffffff',
+                        transition: 'all 0.2s ease',
+                        opacity: hfAuthPolling ? 0.7 : 1
+                      }}
+                    >
+                      {hfAuthPolling ? 'Waiting for sign in...' : 'Sign in with HuggingFace'}
+                    </button>
+                  </>
+                )}
+              </div>
+              )}
+
+              {/* Model Access Check */}
+              {hfAuthStatus === 'authenticated' && Object.keys(accessMap).length > 0 && !allAuthorized && (
+                <div ref={modelAccessRef} style={{
+                  marginTop: 24,
+                  background: '#2e3445',
+                  borderRadius: 12,
+                  padding: '14px 18px'
+                }}>
+                  <div style={{ marginBottom: 8 }}>
+                    <label style={{ fontSize: 13, fontWeight: 600, color: '#ffffff' }}>
+                      Model Access
+                      <span style={{ fontSize: 11, color: '#f59e0b', marginLeft: 8, fontWeight: 400 }}>
+                        Action required
+                      </span>
+                    </label>
+                  </div>
+                  <p style={{ fontSize: 11, color: '#888', marginBottom: 12 }}>
+                    Some models require you to accept their license on HuggingFace before downloading.
+                  </p>
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+                    {Object.entries(accessMap)
+                      .filter(([, status]) => status === 'not_authorized')
+                      .map(([repoId]) => (
+                        <div key={repoId} style={{
+                          display: 'flex',
+                          alignItems: 'center',
+                          justifyContent: 'space-between',
+                          background: '#1a1a1a',
+                          borderRadius: 8,
+                          padding: '10px 14px',
+                        }}>
+                          <span style={{ fontSize: 12, color: '#a0a0a0', fontFamily: "'Consolas', 'Monaco', monospace" }}>
+                            {repoId}
+                          </span>
+                          <button
+                            onClick={() => window.electronAPI.openHuggingFaceRepo({ repoId })}
+                            style={{
+                              padding: '6px 16px',
+                              borderRadius: 9999,
+                              fontSize: 12,
+                              fontWeight: 600,
+                              cursor: 'pointer',
+                              background: '#4f46e5',
+                              border: 'none',
+                              color: '#ffffff',
+                              transition: 'all 0.2s ease',
+                            }}
+                          >
+                            Request access
+                          </button>
+                        </div>
+                      ))}
+                  </div>
+                </div>
+              )}
             </div>
           )}
 

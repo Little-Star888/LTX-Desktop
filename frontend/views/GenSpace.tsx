@@ -9,19 +9,22 @@ import { useProjects } from '../contexts/ProjectContext'
 import type { GenSpaceRetakeSource } from '../contexts/ProjectContext'
 import { useAppSettings } from '../contexts/AppSettingsContext'
 import { useGeneration } from '../hooks/use-generation'
+import { useVideoGenerationModelSpecs } from '../hooks/use-video-generation-model-specs'
+import { createLocalGenerationError, type GenerationError } from '../lib/generation-errors'
 import { useRetake } from '../hooks/use-retake'
 import { useIcLora } from '../hooks/use-ic-lora'
 import type { ICLoraConditioningType } from '../components/ICLoraPanel'
-import type { Asset } from '../types/project'
+import type { Asset } from '../types/project-model'
 import { GenerationErrorDialog } from '../components/GenerationErrorDialog'
 import { addVisualAssetToProject } from '../lib/asset-copy'
 import { pathToFileUrl } from '../lib/file-url'
 import {
-  FORCED_API_VIDEO_FPS,
-  FORCED_API_VIDEO_RESOLUTIONS,
-  getAllowedForcedApiDurations,
-  sanitizeForcedApiVideoSettings,
-} from '../lib/api-video-options'
+  areVideoGenerationSettingsEquivalent,
+  getVideoGenerationModelSpecs,
+  resolveVideoGenerationOptions,
+  sanitizeVideoGenerationSettings,
+  type VideoGenerationModelSpecItem,
+} from '../lib/video-generation-model-specs'
 import { logger } from '../lib/logger'
 import { RetakePanel } from '../components/RetakePanel'
 import { ICLoraPanel, CONDITIONING_TYPES } from '../components/ICLoraPanel'
@@ -51,6 +54,7 @@ function AssetCard({
   const [isHovered, setIsHovered] = useState(false)
   const [currentTime, setCurrentTime] = useState(0)
   const [isMuted, setIsMuted] = useState(true)
+  const [volume, setVolume] = useState(0.5)
   const isFavorite = asset.favorite || false
 
   useEffect(() => {
@@ -61,9 +65,10 @@ function AssetCard({
     }
     if (hoverVideoRef.current) {
       hoverVideoRef.current.muted = isMuted
+      hoverVideoRef.current.volume = volume
       hoverVideoRef.current.play().catch(() => {})
     }
-  }, [asset.type, isHovered, isMuted])
+  }, [asset.type, isHovered, isMuted, volume])
 
   const handleTimeUpdate = () => {
     if (hoverVideoRef.current) {
@@ -203,12 +208,36 @@ function AssetCard({
               <div className="px-2 py-1 rounded-lg bg-black/50 backdrop-blur-md text-white text-xs font-mono">
                 {formatTime(currentTime)}
               </div>
-              <button
-                onClick={(e) => { e.stopPropagation(); setIsMuted(!isMuted) }}
-                className="p-1.5 rounded-lg bg-black/40 backdrop-blur-md text-white hover:bg-black/60 transition-colors"
-              >
-                {isMuted ? <VolumeX className="h-3.5 w-3.5" /> : <Volume2 className="h-3.5 w-3.5" />}
-              </button>
+              <div className="flex items-center gap-1.5 rounded-lg bg-black/40 backdrop-blur-md pl-1.5 pr-2 py-1">
+                <button
+                  onClick={(e) => { e.stopPropagation(); setIsMuted(!isMuted) }}
+                  className="text-white hover:text-white/80 transition-colors"
+                  aria-label={isMuted ? 'Unmute' : 'Mute'}
+                >
+                  {isMuted ? <VolumeX className="h-3.5 w-3.5" /> : <Volume2 className="h-3.5 w-3.5" />}
+                </button>
+                <input
+                  type="range"
+                  min={0}
+                  max={1}
+                  step={0.05}
+                  value={isMuted ? 0 : volume}
+                  onClick={(e) => e.stopPropagation()}
+                  onMouseDown={(e) => e.stopPropagation()}
+                  onChange={(e) => {
+                    e.stopPropagation()
+                    const next = parseFloat(e.target.value)
+                    setVolume(next)
+                    if (next === 0) {
+                      setIsMuted(true)
+                    } else if (isMuted) {
+                      setIsMuted(false)
+                    }
+                  }}
+                  className="w-16 h-1 accent-white cursor-pointer"
+                  aria-label="Volume"
+                />
+              </div>
             </div>
           </div>
         )}
@@ -351,7 +380,8 @@ function PromptBar({
   onInputAudioChange,
   settings,
   onSettingsChange,
-  shouldVideoGenerateWithLtxApi,
+  videoModelSpecs,
+  videoSettingsMessage,
   canGenerate,
   buttonLabel,
   buttonIcon,
@@ -385,7 +415,8 @@ function PromptBar({
     audio?: boolean
   }
   onSettingsChange: (settings: any) => void
-  shouldVideoGenerateWithLtxApi: boolean
+  videoModelSpecs: VideoGenerationModelSpecItem[]
+  videoSettingsMessage?: string | null
   icLoraCondType?: ICLoraConditioningType
   onIcLoraCondTypeChange?: (type: ICLoraConditioningType) => void
   icLoraStrength?: number
@@ -397,15 +428,18 @@ function PromptBar({
   const [isAudioDragOver, setIsAudioDragOver] = useState(false)
   const isRetake = mode === 'retake'
   const isIcLora = mode === 'ic-lora'
-  const LOCAL_MAX_DURATION: Record<string, number> = { '540p': 20, '720p': 10, '1080p': 5 }
-  const localMaxDuration = LOCAL_MAX_DURATION[settings.videoResolution] ?? 20
-  const videoDurationOptions = shouldVideoGenerateWithLtxApi
-    ? [...getAllowedForcedApiDurations(settings.model, settings.videoResolution, settings.fps)]
-    : [5, 6, 8, 10, 20].filter(d => d <= localMaxDuration)
-  const videoResolutionOptions = shouldVideoGenerateWithLtxApi
-    ? (inputAudio ? ['1080p'] : [...FORCED_API_VIDEO_RESOLUTIONS])
-    : ['540p', '720p', '1080p']
-  const videoFpsOptions = shouldVideoGenerateWithLtxApi ? [...FORCED_API_VIDEO_FPS] : [24, 25, 50]
+  const resolvedVideoOptions = mode === 'video'
+    ? resolveVideoGenerationOptions({
+        settings,
+        modelSpecs: videoModelSpecs,
+        hasAudio: Boolean(inputAudio),
+      })
+    : null
+  const showVideoFpsControl = Boolean(
+    resolvedVideoOptions
+    && resolvedVideoOptions.hasCompatibleOptions
+    && resolvedVideoOptions.fpsOptions.length > 1,
+  )
 
   const handleDrop = (e: React.DragEvent) => {
     e.preventDefault()
@@ -677,101 +711,91 @@ function PromptBar({
           </>
         ) : (
           <>
-            <SettingsDropdown
-              title="MODEL"
-              value={settings.model}
-              onChange={(v) => onSettingsChange({ ...settings, model: v })}
-              options={
-                shouldVideoGenerateWithLtxApi
-                  ? [
-                      { value: 'fast', label: 'LTX-2.3 Fast (API)', disabled: !!inputAudio, tooltip: inputAudio ? 'Fast model is not available for Audio-to-Video' : undefined },
-                      { value: 'pro', label: 'LTX-2.3 Pro (API)' },
-                    ]
-                  : [
-                      { value: 'fast', label: 'LTX 2.3 Fast' },
-                    ]
-              }
-              trigger={
-                <>
-                  <LightricksIcon className="h-3.5 w-3.5" />
-                  <span className="text-zinc-300 font-medium">
-                    {shouldVideoGenerateWithLtxApi
-                      ? (settings.model === 'pro' ? 'LTX-2.3 Pro (API)' : 'LTX-2.3 Fast (API)')
-                      : 'LTX 2.3 Fast'}
-                  </span>
-                </>
-              }
-            />
+            {resolvedVideoOptions && resolvedVideoOptions.hasCompatibleOptions ? (
+              <>
+                <SettingsDropdown
+                  title="MODEL"
+                  value={resolvedVideoOptions.selectedModel ?? settings.model}
+                  onChange={(v) => onSettingsChange({ ...settings, model: v })}
+                  options={resolvedVideoOptions.modelOptions.map((item) => ({
+                    value: item.pipeline,
+                    label: item.spec.display_name,
+                  }))}
+                  trigger={
+                    <>
+                      <LightricksIcon className="h-3.5 w-3.5" />
+                      <span className="text-zinc-300 font-medium">
+                        {resolvedVideoOptions.modelOptions.find((item) => item.pipeline === resolvedVideoOptions.selectedModel)?.spec.display_name
+                          ?? settings.model}
+                      </span>
+                    </>
+                  }
+                />
 
-            <div className="w-px h-4 bg-zinc-700 mx-0.5" />
-            
-            {/* Duration dropdown */}
-            <SettingsDropdown
-              title="DURATION"
-              value={String(settings.duration)}
-              onChange={(v) => onSettingsChange({ ...settings, duration: parseFloat(v) })}
-              options={videoDurationOptions.map((value) => ({ value: String(value), label: `${value} Sec` }))}
-              trigger={
-                <>
-                  <Clock className="h-3.5 w-3.5" />
-                  <span>{settings.duration}s</span>
-                </>
-              }
-            />
-            
-            {/* Resolution dropdown */}
-            <SettingsDropdown
-              title="RESOLUTION"
-              value={settings.videoResolution}
-              onChange={(v) => {
-                const maxDur = LOCAL_MAX_DURATION[v] ?? 20
-                const clampedDuration = settings.duration > maxDur ? maxDur : settings.duration
-                onSettingsChange({ ...settings, videoResolution: v, duration: clampedDuration })
-              }}
-              options={videoResolutionOptions.map((value) => ({ value, label: value }))}
-              trigger={
-                <>
-                  <Monitor className="h-3.5 w-3.5" />
-                  <span>{settings.videoResolution.replace('p', '')}</span>
-                </>
-              }
-            />
+                <div className="w-px h-4 bg-zinc-700 mx-0.5" />
 
-            {shouldVideoGenerateWithLtxApi && (
-              <SettingsDropdown
-                title="FPS"
-                value={String(settings.fps)}
-                onChange={(v) => onSettingsChange({ ...settings, fps: parseInt(v) })}
-                options={videoFpsOptions.map((value) => ({ value: String(value), label: `${value}` }))}
-                trigger={
-                  <>
-                    <Film className="h-3.5 w-3.5" />
-                    <span>{settings.fps} FPS</span>
-                  </>
-                }
-              />
-            )}
-            
-            {/* Aspect Ratio dropdown */}
-            <SettingsDropdown
-              title="ASPECT RATIO"
-              value={settings.aspectRatio}
-              onChange={(v) => onSettingsChange({ ...settings, aspectRatio: v })}
-              options={inputAudio
-                ? [{ value: '16:9', label: '16:9' }]
-                : [
+                <SettingsDropdown
+                  title="DURATION"
+                  value={String(resolvedVideoOptions.selectedDuration ?? settings.duration)}
+                  onChange={(v) => onSettingsChange({ ...settings, duration: parseInt(v) })}
+                  options={resolvedVideoOptions.durationOptions.map((value) => ({ value: String(value), label: `${value} Sec` }))}
+                  trigger={
+                    <>
+                      <Clock className="h-3.5 w-3.5" />
+                      <span>{resolvedVideoOptions.selectedDuration ?? settings.duration}s</span>
+                    </>
+                  }
+                />
+
+                <SettingsDropdown
+                  title="RESOLUTION"
+                  value={resolvedVideoOptions.selectedResolution ?? settings.videoResolution}
+                  onChange={(v) => onSettingsChange({ ...settings, videoResolution: v })}
+                  options={resolvedVideoOptions.resolutionOptions.map((value) => ({ value, label: value }))}
+                  trigger={
+                    <>
+                      <Monitor className="h-3.5 w-3.5" />
+                      <span>{(resolvedVideoOptions.selectedResolution ?? settings.videoResolution).replace('p', '')}</span>
+                    </>
+                  }
+                />
+
+                {showVideoFpsControl && (
+                  <SettingsDropdown
+                    title="FPS"
+                    value={String(resolvedVideoOptions.selectedFps ?? settings.fps)}
+                    onChange={(v) => onSettingsChange({ ...settings, fps: parseInt(v) })}
+                    options={resolvedVideoOptions.fpsOptions.map((value) => ({ value: String(value), label: `${value}` }))}
+                    trigger={
+                      <>
+                        <Film className="h-3.5 w-3.5" />
+                        <span>{resolvedVideoOptions.selectedFps ?? settings.fps} FPS</span>
+                      </>
+                    }
+                  />
+                )}
+
+                <SettingsDropdown
+                  title="ASPECT RATIO"
+                  value={settings.aspectRatio}
+                  onChange={(v) => onSettingsChange({ ...settings, aspectRatio: v })}
+                  options={[
                     { value: '16:9', label: '16:9' },
                     { value: '9:16', label: '9:16' },
-                  ]
-              }
-              trigger={
-                <>
-                  <AspectIcon className="h-3.5 w-3.5" />
-                  <span>{settings.aspectRatio}</span>
-                </>
-              }
-            />
-            
+                  ]}
+                  trigger={
+                    <>
+                      <AspectIcon className="h-3.5 w-3.5" />
+                      <span>{settings.aspectRatio}</span>
+                    </>
+                  }
+                />
+              </>
+            ) : (
+              <div className="px-2 py-1.5 rounded-md bg-zinc-800/60 text-zinc-500 text-xs">
+                {videoSettingsMessage || 'Loading generation settings...'}
+              </div>
+            )}
           </>
         )}
         
@@ -861,8 +885,7 @@ const DEFAULT_VIDEO_SETTINGS = {
 
 export function GenSpace() {
   const {
-    currentProject,
-    currentProjectId,
+    activeProject,
     addAsset,
     addTakeToAsset,
     deleteAsset,
@@ -879,12 +902,18 @@ export function GenSpace() {
     setGenSpaceIcLoraSource,
     setPendingIcLoraUpdate,
   } = useProjects()
+  const currentProjectId = activeProject?.id ?? null
   const { shouldVideoGenerateWithLtxApi, forceApiGenerations, settings: appSettings } = useAppSettings()
+  const {
+    modelSpecs: videoGenerationModelSpecsResponse,
+    isLoading: isLoadingVideoGenerationModelSpecs,
+    errorMessage: videoGenerationModelSpecsErrorMessage,
+  } = useVideoGenerationModelSpecs()
   const [mode, setMode] = useState<'image' | 'video' | 'retake' | 'ic-lora'>('video')
   const [prompt, setPrompt] = useState('')
   const [inputImage, setInputImage] = useState<string | null>(null)
   const [inputAudio, setInputAudio] = useState<string | null>(null)
-  const [localError, setLocalError] = useState<string | null>(null)
+  const [localError, setLocalError] = useState<GenerationError | null>(null)
   const [selectedAsset, setSelectedAsset] = useState<Asset | null>(null)
   const [copiedPrompt, setCopiedPrompt] = useState(false)
   const [showFavorites, setShowFavorites] = useState(false)
@@ -910,12 +939,22 @@ export function GenSpace() {
     }
   } | null>(null)
   const [settings, setSettings] = useState(() => ({ ...DEFAULT_VIDEO_SETTINGS }))
-  const applyForcedVideoSettings = useCallback(
-    (next: { model: string; duration: number; videoResolution: string; fps: number; audio: boolean; aspectRatio: string; imageResolution: string; variations: number }) => {
-      if (!shouldVideoGenerateWithLtxApi || mode !== 'video') return next
-      return sanitizeForcedApiVideoSettings(next, { hasAudio: !!inputAudio })
+  const videoModelSpecs = getVideoGenerationModelSpecs(videoGenerationModelSpecsResponse, {
+    useApiSpecs: shouldVideoGenerateWithLtxApi,
+  })
+  const videoSettingsMessage = isLoadingVideoGenerationModelSpecs
+    ? 'Loading generation settings...'
+    : videoGenerationModelSpecsErrorMessage
+      ? `Could not load generation settings: ${videoGenerationModelSpecsErrorMessage}`
+      : null
+  const sanitizeVideoSettings = useCallback(
+    (next: typeof settings) => {
+      if (mode !== 'video' || videoModelSpecs.length === 0) return next
+      return sanitizeVideoGenerationSettings(next, videoModelSpecs, {
+        hasAudio: Boolean(inputAudio),
+      }) ?? next
     },
-    [inputAudio, mode, shouldVideoGenerateWithLtxApi],
+    [inputAudio, mode, videoModelSpecs],
   )
   
   const {
@@ -1038,31 +1077,27 @@ export function GenSpace() {
   }, [forceApiGenerations, mode])
 
   useEffect(() => {
-    if (!shouldVideoGenerateWithLtxApi || mode !== 'video') return
-    setSettings((prev) => applyForcedVideoSettings({ ...prev, model: 'fast' }))
-  }, [applyForcedVideoSettings, mode, shouldVideoGenerateWithLtxApi])
+    if (mode !== 'video' || videoModelSpecs.length === 0) return
+    setSettings((prev) => {
+      const next = sanitizeVideoSettings(prev)
+      return areVideoGenerationSettingsEquivalent(prev, next) ? prev : next
+    })
+  }, [mode, sanitizeVideoSettings, videoModelSpecs.length])
 
   useEffect(() => {
     if (retakeError) {
-      setLocalError(retakeError)
+      setLocalError(createLocalGenerationError(retakeError))
     }
   }, [retakeError])
 
   useEffect(() => {
     if (icLoraError) {
-      setLocalError(icLoraError)
+      setLocalError(createLocalGenerationError(icLoraError))
     }
   }, [icLoraError])
 
-  // Force pro model + resolution when audio is attached (A2V only supports pro @ 1080p 16:9)
-  useEffect(() => {
-    if (inputAudio) {
-      setSettings(prev => applyForcedVideoSettings({ ...prev, model: 'pro', aspectRatio: '16:9' }))
-    }
-  }, [inputAudio]) // eslint-disable-line react-hooks/exhaustive-deps
-
   // Only show assets that were generated (have generationParams), not imported files
-  const assets = (currentProject?.assets || []).filter(a => a.generationParams)
+  const assets = (activeProject?.assets || []).filter(a => a.generationParams)
   const [lastPrompt, setLastPrompt] = useState('')
   
   // When video generation completes, add to project assets
@@ -1076,7 +1111,7 @@ export function GenSpace() {
     const genMode = inputAudio
       ? 'audio-to-video'
       : inputImage ? 'image-to-video' : 'text-to-video'
-    const savedVideoSettings = applyForcedVideoSettings(settings)
+    const savedVideoSettings = sanitizeVideoSettings(settings)
 
     ;(async () => {
       try {
@@ -1122,7 +1157,7 @@ export function GenSpace() {
         logger.error(`Failed to persist generated video asset: ${err}`)
       }
     })()
-  }, [videoPath, currentProjectId, isGenerating, applyForcedVideoSettings, settings, inputImage, inputAudio, lastPrompt, addAsset, reset])
+  }, [videoPath, currentProjectId, isGenerating, sanitizeVideoSettings, settings, inputImage, inputAudio, lastPrompt, addAsset, reset])
 
   // When retake completes, add as take or new asset
   useEffect(() => {
@@ -1137,14 +1172,14 @@ export function GenSpace() {
       const copied = await addVisualAssetToProject(retakeResult.videoPath, currentProjectId, 'video')
       if (!copied) {
         logger.error('Could not persist retake result to project storage')
-        setLocalError('Failed to save retake output to project storage.')
+        setLocalError(createLocalGenerationError('Failed to save retake output to project storage.'))
         setActiveRetakeSource(null)
         resetRetake()
         return
       }
 
       if (activeRetakeSource?.assetId) {
-        const sourceAsset = currentProject?.assets?.find(a => a.id === activeRetakeSource.assetId)
+        const sourceAsset = activeProject?.assets?.find(a => a.id === activeRetakeSource.assetId)
         if (sourceAsset) {
           const newTakeIndex = sourceAsset.takes ? sourceAsset.takes.length : 1
           addTakeToAsset(currentProjectId, sourceAsset.id, {
@@ -1204,7 +1239,7 @@ export function GenSpace() {
       setActiveRetakeSource(null)
       resetRetake()
     })()
-  }, [retakeResult, isRetaking, currentProjectId, currentProject?.assets, activeRetakeSource, addAsset, addTakeToAsset, setPendingRetakeUpdate, resetRetake])
+  }, [retakeResult, isRetaking, currentProjectId, activeProject?.assets, activeRetakeSource, addAsset, addTakeToAsset, setPendingRetakeUpdate, resetRetake])
 
   useEffect(() => {
     if (!icLoraResult || !currentProjectId || isIcLoraGenerating) return
@@ -1216,14 +1251,14 @@ export function GenSpace() {
       const copied = await addVisualAssetToProject(icLoraResult.videoPath, currentProjectId, 'video')
       if (!copied) {
         logger.error('Could not persist IC-LoRA result to project storage')
-        setLocalError('Failed to save IC-LoRA output to project storage.')
+        setLocalError(createLocalGenerationError('Failed to save IC-LoRA output to project storage.'))
         setActiveIcLoraSource(null)
         resetIcLora()
         return
       }
 
       if (activeIcLoraSource?.assetId) {
-        const sourceAsset = currentProject?.assets?.find(a => a.id === activeIcLoraSource.assetId)
+        const sourceAsset = activeProject?.assets?.find(a => a.id === activeIcLoraSource.assetId)
         if (sourceAsset) {
           const newTakeIndex = sourceAsset.takes ? sourceAsset.takes.length : 1
           addTakeToAsset(currentProjectId, sourceAsset.id, {
@@ -1279,7 +1314,7 @@ export function GenSpace() {
 
       setActiveIcLoraSource(null)
     })()
-  }, [icLoraResult, isIcLoraGenerating, currentProjectId, currentProject?.assets, activeIcLoraSource, addAsset, addTakeToAsset, setPendingIcLoraUpdate])
+  }, [icLoraResult, isIcLoraGenerating, currentProjectId, activeProject?.assets, activeIcLoraSource, addAsset, addTakeToAsset, setPendingIcLoraUpdate])
   
   // When image generation/editing completes, add all images to project assets
   useEffect(() => {
@@ -1398,8 +1433,7 @@ export function GenSpace() {
       // Generate video (t2v if no image/audio, i2v if image, a2v if audio)
       const imagePath = inputImage || null
       const audioPath = inputAudio || null
-      const videoSettings = applyForcedVideoSettings(settings)
-      if (audioPath) videoSettings.model = 'pro'
+      const videoSettings = sanitizeVideoSettings(settings)
 
       generate(
         prompt,
@@ -1461,11 +1495,20 @@ export function GenSpace() {
 
   const isRetakeMode = mode === 'retake'
   const isIcLoraMode = mode === 'ic-lora'
+  const hasCompatibleVideoSettings = mode !== 'video' || (
+    !isLoadingVideoGenerationModelSpecs
+    && videoModelSpecs.length > 0
+    && resolveVideoGenerationOptions({
+      settings,
+      modelSpecs: videoModelSpecs,
+      hasAudio: Boolean(inputAudio),
+    }).hasCompatibleOptions
+  )
   const canSubmit = isRetakeMode
     ? retakeInput.ready && !!retakeInput.videoPath && !isRetaking
     : isIcLoraMode
       ? !!prompt.trim() && icLoraInput.ready && !!icLoraInput.videoPath && !isIcLoraGenerating
-      : !!prompt.trim()
+      : !!prompt.trim() && hasCompatibleVideoSettings
   const promptButtonLabel = isRetakeMode ? 'Retake' : isIcLoraMode ? 'Generate' : 'Generate'
   const promptButtonIcon = isRetakeMode
     ? <Scissors className="h-3.5 w-3.5" />
@@ -1708,8 +1751,9 @@ export function GenSpace() {
           inputAudio={inputAudio}
           onInputAudioChange={setInputAudio}
           settings={settings}
-          onSettingsChange={(nextSettings) => setSettings(applyForcedVideoSettings(nextSettings))}
-          shouldVideoGenerateWithLtxApi={shouldVideoGenerateWithLtxApi}
+          onSettingsChange={(nextSettings) => setSettings(sanitizeVideoSettings(nextSettings))}
+          videoModelSpecs={videoModelSpecs}
+          videoSettingsMessage={videoSettingsMessage}
           icLoraCondType={icLoraCondType}
           onIcLoraCondTypeChange={setIcLoraCondType}
           icLoraStrength={icLoraStrength}

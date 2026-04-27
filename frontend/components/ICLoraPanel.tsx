@@ -3,9 +3,11 @@ import {
   Upload, Loader2, Film, Sparkles,
   RefreshCw, Download, AlertCircle, Trash2,
 } from 'lucide-react'
-import { ApiClient } from '../lib/api-client'
+import { ApiClient, type ApiRequestBodyOf, type ApiSuccessOf } from '../lib/api-client'
 import { logger } from '../lib/logger'
 import { pathToFileUrl } from '../lib/file-url'
+import { useHfAuth } from '../hooks/use-hf-auth'
+import { useHfModelAccess } from '../hooks/use-hf-model-access'
 
 export type ICLoraConditioningType = 'canny' | 'depth'
 
@@ -33,18 +35,9 @@ export const CONDITIONING_TYPES: { value: ICLoraConditioningType; label: string;
   { value: 'depth', label: 'Depth Map', desc: 'Estimated depth' },
 ]
 
-const IC_LORA_MODEL_IDS = ['ic_lora', 'depth_processor'] as const
-type IcLoraModelId = typeof IC_LORA_MODEL_IDS[number]
-
-const IC_LORA_MODEL_LABELS: Record<IcLoraModelId, string> = {
-  ic_lora: 'IC-LoRA Union',
-  depth_processor: 'Depth Processor',
-}
-
-const EMPTY_IC_MODEL_STATUS: Record<IcLoraModelId, boolean> = {
-  ic_lora: false,
-  depth_processor: false,
-}
+type StartModelDownloadBody = NonNullable<ApiRequestBodyOf<'startModelDownload'>>
+type ModelCheckpointID = NonNullable<StartModelDownloadBody['cp_ids']>[number]
+type DownloadProgress = ApiSuccessOf<'getModelDownloadProgress'>
 
 
 export function ICLoraPanel({
@@ -72,15 +65,17 @@ export function ICLoraPanel({
   const [conditioningPreview, setConditioningPreview] = useState<string | null>(null)
   const [isExtracting, setIsExtracting] = useState(false)
 
-  const [icModelDownloaded, setIcModelDownloaded] = useState<Record<IcLoraModelId, boolean>>({ ...EMPTY_IC_MODEL_STATUS })
+  const [requiredIcLoraCpIds, setRequiredIcLoraCpIds] = useState<ModelCheckpointID[]>([])
   const [isCheckingIcLora, setIsCheckingIcLora] = useState(false)
   const [isDownloadingIcLora, setIsDownloadingIcLora] = useState(false)
-  const [downloadProgress, setDownloadProgress] = useState<Awaited<ReturnType<typeof ApiClient.getModelDownloadProgress>> | null>(null)
+  const [downloadProgress, setDownloadProgress] = useState<DownloadProgress | null>(null)
   const [downloadError, setDownloadError] = useState<string | null>(null)
   const [downloadSessionId, setDownloadSessionId] = useState<string | null>(null)
   const [extractError, setExtractError] = useState<string | null>(null)
   const [isDragOver, setIsDragOver] = useState(false)
-  const icLoraReady = IC_LORA_MODEL_IDS.every(id => icModelDownloaded[id])
+  const icLoraReady = requiredIcLoraCpIds.length === 0
+  const { hfAuthStatus, hfAuthPolling, startHuggingFaceLogin } = useHfAuth(!icLoraReady)
+  const { accessMap, allAuthorized } = useHfModelAccess(requiredIcLoraCpIds, hfAuthStatus)
 
   useEffect(() => {
     if (resetKey === undefined) return
@@ -106,27 +101,25 @@ export function ICLoraPanel({
 
   const checkIcLoraAvailability = useCallback(async () => {
     setIsCheckingIcLora(true)
-    try {
-      const statusPayload = await ApiClient.getModelsStatus()
-      const nextStatus: Record<IcLoraModelId, boolean> = { ...EMPTY_IC_MODEL_STATUS }
-      IC_LORA_MODEL_IDS.forEach(modelId => {
-        nextStatus[modelId] = statusPayload.models.some(model => model.id === modelId && model.downloaded)
-      })
-      setIcModelDownloaded(nextStatus)
-      const isReady = IC_LORA_MODEL_IDS.every(modelId => nextStatus[modelId])
-
-      if (isReady) {
-        setIsDownloadingIcLora(false)
-        setDownloadProgress(null)
-        setDownloadError(null)
-        setDownloadSessionId(null)
-      }
-    } catch (e) {
-      logger.warn(`Failed to fetch IC-LoRA model status: ${e}`)
-      setDownloadError((e as Error).message)
-    } finally {
+    const result = await ApiClient.getLtxIcLoraRecommendation()
+    if (!result.ok) {
+      logger.warn(`Failed to fetch IC-LoRA model status: ${result.error.message}`)
+      setDownloadError(result.error.message)
       setIsCheckingIcLora(false)
+      return
     }
+
+    const recommendationPayload = result.data
+    setRequiredIcLoraCpIds(recommendationPayload.cps_to_download)
+    const isReady = recommendationPayload.cps_to_download.length === 0
+
+    if (isReady) {
+      setIsDownloadingIcLora(false)
+      setDownloadProgress(null)
+      setDownloadError(null)
+      setDownloadSessionId(null)
+    }
+    setIsCheckingIcLora(false)
   }, [])
 
   useEffect(() => {
@@ -137,22 +130,24 @@ export function ICLoraPanel({
     if (icLoraReady || !isDownloadingIcLora || !downloadSessionId) return
 
     const pollProgress = async () => {
-      try {
-        const progressPayload = await ApiClient.getModelDownloadProgress({ sessionId: downloadSessionId })
-        setDownloadProgress(progressPayload)
+      const result = await ApiClient.getModelDownloadProgress({ sessionId: downloadSessionId })
+      if (!result.ok) {
+        logger.warn(`Failed polling IC-LoRA download progress: ${result.error.message}`)
+        return
+      }
 
-        if (progressPayload.status === 'error') {
-          setIsDownloadingIcLora(false)
-          setDownloadError(progressPayload.error || 'Model download failed')
-          return
-        }
+      const progressPayload = result.data
+      setDownloadProgress(progressPayload)
 
-        if (progressPayload.status === 'complete') {
-          setIsDownloadingIcLora(false)
-          await checkIcLoraAvailability()
-        }
-      } catch (e) {
-        logger.warn(`Failed polling IC-LoRA download progress: ${e}`)
+      if (progressPayload.status === 'error') {
+        setIsDownloadingIcLora(false)
+        setDownloadError(progressPayload.error || 'Model download failed')
+        return
+      }
+
+      if (progressPayload.status === 'complete') {
+        setIsDownloadingIcLora(false)
+        await checkIcLoraAvailability()
       }
     }
 
@@ -165,22 +160,25 @@ export function ICLoraPanel({
     if (isDownloadingIcLora) return
     setDownloadError(null)
 
-    try {
-      const startedPayload = await ApiClient.startModelDownload({
-        modelTypes: [...IC_LORA_MODEL_IDS],
-      })
-      if (startedPayload.status === 'started') {
-        setDownloadSessionId(startedPayload.sessionId)
-        setIsDownloadingIcLora(true)
-        return
-      }
-
-      setDownloadError('Unexpected response while starting IC-LoRA download')
-    } catch (e) {
-      logger.warn(`Failed to start IC-LoRA download: ${e}`)
-      setDownloadError((e as Error).message)
+    const result = await ApiClient.startModelDownload({
+      type: 'download',
+      cp_ids: [...requiredIcLoraCpIds],
+    })
+    if (!result.ok) {
+      logger.warn(`Failed to start IC-LoRA download: ${result.error.message}`)
+      setDownloadError(result.error.message)
+      return
     }
-  }, [isDownloadingIcLora])
+
+    const startedPayload = result.data
+    if (startedPayload.status === 'started') {
+      setDownloadSessionId(startedPayload.sessionId)
+      setIsDownloadingIcLora(true)
+      return
+    }
+
+    setDownloadError('Unexpected response while starting IC-LoRA download')
+  }, [isDownloadingIcLora, requiredIcLoraCpIds])
 
   const isExtractingRef = useRef(false)
   const extractConditioning = useCallback(async () => {
@@ -188,20 +186,22 @@ export function ICLoraPanel({
     isExtractingRef.current = true
     setIsExtracting(true)
     setExtractError(null)
-    try {
-      const payload = await ApiClient.extractIcLoraConditioning({
-        video_path: inputVideoPath,
-        conditioning_type: conditioningType,
-        frame_time: inputTime,
-      })
-      setConditioningPreview(payload.conditioning)
-    } catch (e) {
-      logger.warn(`Failed to extract conditioning: ${e}`)
-      setExtractError((e as Error).message)
-    } finally {
+    const result = await ApiClient.extractIcLoraConditioning({
+      video_path: inputVideoPath,
+      conditioning_type: conditioningType,
+      frame_time: inputTime,
+    })
+    if (!result.ok) {
+      logger.warn(`Failed to extract conditioning: ${result.error.message}`)
+      setExtractError(result.error.message)
       isExtractingRef.current = false
       setIsExtracting(false)
+      return
     }
+
+    setConditioningPreview(result.data.conditioning)
+    isExtractingRef.current = false
+    setIsExtracting(false)
   }, [inputVideoPath, conditioningType, inputTime, icLoraReady])
 
   const extractTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
@@ -285,13 +285,14 @@ export function ICLoraPanel({
   const showDownloadGate = isCheckingIcLora || !icLoraReady
   const runningDownloadProgress =
     downloadProgress?.status === 'downloading' ? downloadProgress : null
-  const gateItems = IC_LORA_MODEL_IDS.map(modelId => {
-    const downloaded = icModelDownloaded[modelId]
-    const isCompleted = runningDownloadProgress?.completed_files?.includes(modelId) ?? false
-    const isCurrentDownload = isDownloadingIcLora && runningDownloadProgress?.current_downloading_file === modelId
+  const gateItemIds = [...new Set([...(requiredIcLoraCpIds ?? []), ...(runningDownloadProgress?.all_files ?? [])])]
+  const gateItems = gateItemIds.map((cpId) => {
+    const downloaded = !requiredIcLoraCpIds.includes(cpId)
+    const isCompleted = runningDownloadProgress?.completed_files?.includes(cpId) ?? false
+    const isCurrentDownload = isDownloadingIcLora && runningDownloadProgress?.current_downloading_file === cpId
     const progress = downloaded ? 100 : (isCompleted ? 100 : (isCurrentDownload ? (runningDownloadProgress?.current_file_progress ?? 0) : 0))
     const status = downloaded ? 'Ready' : (isCompleted ? 'Complete' : (isCurrentDownload ? 'Downloading' : 'Missing'))
-    return { id: modelId, label: IC_LORA_MODEL_LABELS[modelId], downloaded, progress, status }
+    return { id: cpId, label: cpId, downloaded, progress, status }
   })
 
   return (
@@ -366,24 +367,59 @@ export function ICLoraPanel({
                   {downloadError && (
                     <div className="text-[11px] text-red-400">{downloadError}</div>
                   )}
+                  {hfAuthStatus === 'authenticated' && !allAuthorized && Object.keys(accessMap).length > 0 && (
+                    <div className="space-y-1.5 pt-1 pb-1">
+                      <div className="text-[11px] text-amber-400">Accept license for these models:</div>
+                      {Object.entries(accessMap)
+                        .filter(([, status]) => status === 'not_authorized')
+                        .map(([repoId]) => (
+                          <div key={repoId} className="flex items-center justify-between bg-zinc-900 rounded px-2 py-1.5">
+                            <span className="text-[10px] text-zinc-400 font-mono">{repoId}</span>
+                            <button
+                              onClick={() => window.electronAPI.openHuggingFaceRepo({ repoId })}
+                              className="text-[10px] text-indigo-400 hover:text-indigo-300 font-medium"
+                            >
+                              Request access
+                            </button>
+                          </div>
+                        ))}
+                    </div>
+                  )}
                   <div className="flex items-center gap-2 pt-1">
-                    <button
-                      onClick={handleDownloadIcLora}
-                      disabled={isDownloadingIcLora}
-                      className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-blue-600 hover:bg-blue-500 text-white text-xs font-medium transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-                    >
-                      {isDownloadingIcLora ? (
-                        <>
-                          <Loader2 className="h-3 w-3 animate-spin" />
-                          Downloading...
-                        </>
-                      ) : (
-                        <>
-                          <Download className="h-3 w-3" />
-                          {downloadError ? 'Retry Download' : 'Download Models'}
-                        </>
-                      )}
-                    </button>
+                    {hfAuthStatus !== 'authenticated' ? (
+                      <button
+                        onClick={startHuggingFaceLogin}
+                        disabled={hfAuthPolling}
+                        className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-medium transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                      >
+                        {hfAuthPolling ? (
+                          <>
+                            <Loader2 className="h-3 w-3 animate-spin" />
+                            Waiting for sign in...
+                          </>
+                        ) : (
+                          'Sign in with HuggingFace'
+                        )}
+                      </button>
+                    ) : (
+                      <button
+                        onClick={handleDownloadIcLora}
+                        disabled={isDownloadingIcLora || !allAuthorized}
+                        className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-blue-600 hover:bg-blue-500 text-white text-xs font-medium transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                      >
+                        {isDownloadingIcLora ? (
+                          <>
+                            <Loader2 className="h-3 w-3 animate-spin" />
+                            Downloading...
+                          </>
+                        ) : (
+                          <>
+                            <Download className="h-3 w-3" />
+                            {downloadError ? 'Retry Download' : 'Download Models'}
+                          </>
+                        )}
+                      </button>
+                    )}
                     <button
                       onClick={() => { void checkIcLoraAvailability() }}
                       disabled={isCheckingIcLora}

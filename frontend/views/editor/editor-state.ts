@@ -1,13 +1,14 @@
 import type {
   Asset,
   AssetTake,
+  AssetBins,
   GenerationParams,
   SubtitleClip,
   SubtitleStyle,
   Timeline,
   TimelineClip,
   Track,
-} from '../../types/project'
+} from '../../types/project-model'
 import {
   DEFAULT_LAYOUT,
   type EditorLayout,
@@ -16,6 +17,7 @@ import {
 
 export interface EditorModel {
   assets: Asset[]
+  bins: AssetBins
   timelines: Timeline[]
   activeTimelineId: string | null
 }
@@ -33,6 +35,7 @@ export interface TimelineInOutRange {
 
 export interface EditorUndoSnapshot {
   assets: Asset[]
+  bins: AssetBins
   timelines: Timeline[]
 }
 
@@ -217,7 +220,7 @@ export interface MenuState {
 
 export interface AssetListFilters {
   assetFilter?: Asset['type'] | 'all'
-  selectedBin?: string | null
+  selectedBinId?: string | null
   assetViewMode?: 'grid' | 'list'
   listSortCol?: 'name' | 'type' | 'duration' | 'resolution' | 'date' | 'color'
   listSortDir?: 'asc' | 'desc'
@@ -301,6 +304,7 @@ export function createInitialEditorState(
 export function getUndoSnapshot(state: EditorState): EditorUndoSnapshot {
   return {
     assets: state.editorModel.assets,
+    bins: state.editorModel.bins,
     timelines: state.editorModel.timelines,
   }
 }
@@ -314,6 +318,7 @@ export function applyUndoSnapshot(
     editorModel: {
       ...state.editorModel,
       assets: snapshot.assets,
+      bins: snapshot.bins,
       timelines: snapshot.timelines,
     },
   }
@@ -323,5 +328,5 @@ export function equalUndoSnapshot(
   left: EditorUndoSnapshot,
   right: EditorUndoSnapshot,
 ): boolean {
-  return left.assets === right.assets && left.timelines === right.timelines
+  return left.assets === right.assets && left.bins === right.bins && left.timelines === right.timelines
 }

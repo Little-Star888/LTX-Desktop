@@ -5,8 +5,8 @@ import {
 } from 'lucide-react'
 import { formatKeyCombo, type ActionId, type KeyboardLayout } from '../../lib/keyboard-shortcuts'
 export type { KeyboardLayout } from '../../lib/keyboard-shortcuts'
-import type { TimelineClip, TransitionType, Track, ClipEffect, EffectMask } from '../../types/project'
-import { DEFAULT_COLOR_CORRECTION } from '../../types/project'
+import type { TimelineClip, TransitionType, Track, ClipEffect, EffectMask } from '../../types/project-model'
+import { DEFAULT_COLOR_CORRECTION } from '../../types/project-model'
 
 // ── Tool types & definitions ────────────────────────────────────────
 

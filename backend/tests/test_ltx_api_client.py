@@ -125,7 +125,7 @@ def test_generate_text_to_video_raises_on_non_200() -> None:
     )
 
     client = LTXAPIClientImpl(http=http, ltx_api_base_url="https://api.ltx.video")
-    with pytest.raises(RuntimeError, match="401"):
+    with pytest.raises(LTXAPIClientError, match="401") as exc:
         client.generate_text_to_video(
             api_key="bad-key",
             prompt="A mountain",
@@ -135,6 +135,44 @@ def test_generate_text_to_video_raises_on_non_200() -> None:
             fps=24.0,
             generate_audio=False,
         )
+    assert exc.value.status_code == 401
+    assert exc.value.stage == "generation"
+
+
+def test_generate_text_to_video_extracts_insufficient_funds_error() -> None:
+    http = FakeHTTPClient()
+    http.queue(
+        "post",
+        FakeResponse(
+            status_code=402,
+            text='{"type":"error","error":{"type":"insufficient_funds_error","message":"Insufficient funds. Required: 36 cents"}}',
+            headers={"Content-Type": "application/json", "x-request-id": "req-123"},
+            json_payload={
+                "type": "error",
+                "error": {
+                    "type": "insufficient_funds_error",
+                    "message": "Insufficient funds. Required: 36 cents",
+                },
+            },
+        ),
+    )
+
+    client = LTXAPIClientImpl(http=http, ltx_api_base_url="https://api.ltx.video")
+    with pytest.raises(LTXAPIClientError, match="insufficient_funds_error") as exc:
+        client.generate_text_to_video(
+            api_key="bad-key",
+            prompt="A mountain",
+            model="ltx-2-3-pro",
+            resolution="1920x1080",
+            duration=5.0,
+            fps=24.0,
+            generate_audio=False,
+        )
+    assert exc.value.status_code == 402
+    assert exc.value.stage == "generation"
+    assert exc.value.provider_error_type == "insufficient_funds_error"
+    assert exc.value.provider_message == "Insufficient funds. Required: 36 cents"
+    assert exc.value.request_id == "req-123"
 
 
 def test_upload_file_returns_storage_uri(tmp_path) -> None:
@@ -234,7 +272,7 @@ def test_generate_audio_to_video_raises_on_non_200() -> None:
     http.queue("post", FakeResponse(status_code=422, text="unprocessable"))
 
     client = LTXAPIClientImpl(http=http, ltx_api_base_url="https://api.ltx.video")
-    with pytest.raises(RuntimeError, match="422"):
+    with pytest.raises(LTXAPIClientError, match="422") as exc:
         client.generate_audio_to_video(
             api_key="bad-key",
             prompt="Bad request",
@@ -243,6 +281,8 @@ def test_generate_audio_to_video_raises_on_non_200() -> None:
             model="ltx-2-3-fast",
             resolution="1920x1080",
         )
+    assert exc.value.status_code == 422
+    assert exc.value.stage == "generation"
 
 
 def _write_dummy_video(tmp_path) -> str:

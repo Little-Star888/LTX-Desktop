@@ -19,12 +19,14 @@ class LTXa2vPipeline:
         gemma_root: str | None,
         upsampler_path: str,
         device: torch.device,
+        streaming_prefetch_count: int | None,
     ) -> "LTXa2vPipeline":
         return LTXa2vPipeline(
             checkpoint_path=checkpoint_path,
             gemma_root=gemma_root,
             upsampler_path=upsampler_path,
             device=device,
+            streaming_prefetch_count=streaming_prefetch_count,
         )
 
     def __init__(
@@ -33,11 +35,13 @@ class LTXa2vPipeline:
         gemma_root: str | None,
         upsampler_path: str,
         device: torch.device,
+        streaming_prefetch_count: int | None,
     ) -> None:
         from ltx_core.quantization import QuantizationPolicy
 
         from services.a2v_pipeline.distilled_a2v_pipeline import DistilledA2VPipeline
 
+        self._streaming_prefetch_count = streaming_prefetch_count
         self.pipeline = DistilledA2VPipeline(
             distilled_checkpoint_path=checkpoint_path,
             gemma_root=cast(str, gemma_root),
@@ -74,7 +78,7 @@ class LTXa2vPipeline:
             audio_start_time=audio_start_time,
             audio_max_duration=audio_max_duration,
             tiling_config=tiling_config,
-            streaming_prefetch_count=2,
+            streaming_prefetch_count=self._streaming_prefetch_count,
         )
 
     @torch.inference_mode()

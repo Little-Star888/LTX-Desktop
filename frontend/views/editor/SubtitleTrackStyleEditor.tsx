@@ -1,7 +1,7 @@
 import { useMemo } from 'react'
 import { X, Palette } from 'lucide-react'
-import type { SubtitleStyle } from '../../types/project'
-import { DEFAULT_SUBTITLE_STYLE } from '../../types/project'
+import type { SubtitleStyle } from '../../types/project-model'
+import { DEFAULT_SUBTITLE_STYLE } from '../../types/project-model'
 import { selectSubtitleTrackStyleIdx, selectTracks } from './editor-selectors'
 import { useEditorActions, useEditorStore } from './editor-store'
 

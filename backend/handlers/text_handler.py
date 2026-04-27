@@ -5,8 +5,14 @@ from __future__ import annotations
 from threading import RLock
 from typing import TYPE_CHECKING
 
+from _routes._errors import HTTPError
 from handlers.base import StateHandlerBase, with_state_lock
-from runtime_config.model_download_specs import resolve_model_path
+from runtime_config.model_download_specs import (
+    get_downloaded_ltx_model_id,
+    get_existing_cp_path,
+    get_ltx_model_spec,
+    is_cp_downloaded,
+)
 from state.app_state_types import AppState, TextEncodingResult
 
 if TYPE_CHECKING:
@@ -59,8 +65,12 @@ class TextHandler(StateHandlerBase):
         """
         settings = self.state.app_settings.model_copy(deep=True)
         api_available = bool(settings.ltx_api_key)
-        text_encoder_dir = resolve_model_path(self.models_dir, self.config.model_download_specs,"text_encoder")
-        local_available = text_encoder_dir.exists() and any(text_encoder_dir.iterdir())
+        model_id = get_downloaded_ltx_model_id(self.models_dir)
+        local_available = (
+            False
+            if model_id is None
+            else is_cp_downloaded(self.models_dir, get_ltx_model_spec(model_id).text_encoder_cp)
+        )
 
         if api_available and local_available:
             return settings.use_local_text_encoder  # setting is tiebreaker
@@ -75,8 +85,12 @@ class TextHandler(StateHandlerBase):
         """
         settings = self.state.app_settings.model_copy(deep=True)
         api_available = bool(settings.ltx_api_key)
-        text_encoder_dir = resolve_model_path(self.models_dir, self.config.model_download_specs,"text_encoder")
-        local_available = text_encoder_dir.exists() and any(text_encoder_dir.iterdir())
+        model_id = get_downloaded_ltx_model_id(self.models_dir)
+        local_available = (
+            False
+            if model_id is None
+            else is_cp_downloaded(self.models_dir, get_ltx_model_spec(model_id).text_encoder_cp)
+        )
 
         if not api_available and not local_available:
             raise RuntimeError(
@@ -97,8 +111,10 @@ class TextHandler(StateHandlerBase):
     def resolve_gemma_root(self) -> str | None:
         if not self.should_use_local_encoding():
             return None
-        text_encoder_dir = resolve_model_path(self.models_dir, self.config.model_download_specs,"text_encoder")
-        return str(text_encoder_dir)
+        model_id = get_downloaded_ltx_model_id(self.models_dir)
+        if model_id is None:
+            return None
+        return str(get_existing_cp_path(self.models_dir, get_ltx_model_spec(model_id).text_encoder_cp))
 
     def _prepare_api_embeddings(self, prompt: str, enhance_prompt: bool) -> TextEncodingResult | None:
         if self.should_use_local_encoding():
@@ -119,10 +135,14 @@ class TextHandler(StateHandlerBase):
         if te is None:
             return None
 
+        model_id = get_downloaded_ltx_model_id(self.models_dir)
+        if model_id is None:
+            raise HTTPError(409, "NO_DOWNLOADED_LTX_MODEL")
+
         encoded = te.service.encode_via_api(
             prompt=prompt,
             api_key=settings.ltx_api_key,
-            checkpoint_path=str(resolve_model_path(self.models_dir, self.config.model_download_specs,"checkpoint")),
+            checkpoint_path=str(get_existing_cp_path(self.models_dir, get_ltx_model_spec(model_id).model_cp)),
             enhance_prompt=enhance_prompt,
         )
         if encoded is not None:

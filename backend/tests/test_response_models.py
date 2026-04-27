@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from state.app_state_types import DownloadingSession, FileDownloadRunning, GpuSlot, VideoPipelineState, VideoPipelineWarmth
+from state.app_state_types import DownloadingSession, FileDownloadRunning, GpuSlot, VideoPipelineState
 from tests.fakes.services import FakeFastVideoPipeline
 
 
@@ -12,7 +12,6 @@ class TestGenerationProgressCamelCaseKeys:
         test_state.state.gpu_slot = GpuSlot(
             active_pipeline=VideoPipelineState(
                 pipeline=pipeline,
-                warmth=VideoPipelineWarmth.COLD,
                 is_compiled=False,
             ),
         )
@@ -35,12 +34,12 @@ class TestDownloadProgressSnakeCaseKeys:
         test_state.state.downloading_session = DownloadingSession(
             id="test-session",
             current_running_file=FileDownloadRunning(
-                file_type="checkpoint",
-                target_path="checkpoint",
+                file_type="ltx-2.3-22b-distilled",
+                target_path="ltx-2.3-22b-distilled.safetensors",
                 downloaded_bytes=5_000_000_000,
                 speed_bytes_per_sec=50_000_000.0,
             ),
-            files_to_download={"checkpoint"},
+            files_to_download={"ltx-2.3-22b-distilled"},
             completed_files=set(),
             completed_bytes=0,
         )
@@ -72,11 +71,13 @@ class TestSettingsCamelCaseKeys:
 
         assert "useTorchCompile" in data
         assert "use_torch_compile" not in data
-        assert "fastModel" in data
-        assert "fast_model" not in data
         assert "seedLocked" in data
         assert "seed_locked" not in data
         assert "hasFalApiKey" in data
+        assert "fastModel" not in data
+        assert "fast_model" not in data
+        assert "proModel" not in data
+        assert "pro_model" not in data
 
 
 class TestGenerateSnakeCaseKeys:

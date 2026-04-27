@@ -1,25 +1,34 @@
-"""Model download session handler."""
+"""Checkpoint download session handler."""
 
 from __future__ import annotations
 
 import logging
 import shutil
 import time
-from collections.abc import Callable
+from collections.abc import Callable, Iterable
 from threading import RLock
 from typing import TYPE_CHECKING
 from uuid import uuid4
 
+import requests as http_requests
+
+from _routes._errors import HTTPError
 from api_types import (
+    CheckModelAccessResponse,
     DownloadProgressCompleteResponse,
     DownloadProgressErrorResponse,
     DownloadProgressResponse,
     DownloadProgressRunningResponse,
+    ModelAccessStatus,
+    ModelCheckpointID,
 )
 from handlers.base import StateHandlerBase, with_state_lock
+from handlers.hf_auth_utils import require_hf_token
 from handlers.models_handler import ModelsHandler
 from runtime_config.model_download_specs import (
-    MODEL_FILE_ORDER,
+    ALL_MODEL_CP_IDS,
+    get_model_cp_spec,
+    is_cp_downloaded,
     resolve_downloading_dir,
     resolve_downloading_path,
     resolve_downloading_target_path,
@@ -33,7 +42,6 @@ from state.app_state_types import (
     DownloadSessionId,
     DownloadingSession,
     FileDownloadRunning,
-    ModelFileType,
 )
 
 if TYPE_CHECKING:
@@ -57,24 +65,28 @@ class DownloadHandler(StateHandlerBase):
         self._model_downloader = model_downloader
         self._task_runner = task_runner
 
+    def _ordered_cp_ids(self, cp_ids: Iterable[ModelCheckpointID]) -> tuple[ModelCheckpointID, ...]:
+        cp_id_set = set(cp_ids)
+        return tuple(cp_id for cp_id in ALL_MODEL_CP_IDS if cp_id in cp_id_set)
+
     @with_state_lock
     def is_download_running(self) -> bool:
         return self.state.downloading_session is not None
 
     @with_state_lock
-    def start_download(self, files_to_download: set[ModelFileType]) -> DownloadSessionId:
+    def start_download(self, cp_ids: set[ModelCheckpointID]) -> DownloadSessionId:
         session_id = DownloadSessionId(uuid4().hex)
         self.state.downloading_session = DownloadingSession(
             id=session_id,
             current_running_file=None,
-            files_to_download=files_to_download,
+            files_to_download=cp_ids,
             completed_files=set(),
             completed_bytes=0,
         )
         return session_id
 
     @with_state_lock
-    def start_file(self, file_type: ModelFileType, target: str) -> None:
+    def start_file(self, cp_id: ModelCheckpointID, target: str) -> None:
         session = self.state.downloading_session
         if session is None:
             return
@@ -82,7 +94,7 @@ class DownloadHandler(StateHandlerBase):
             session.completed_bytes += session.current_running_file.downloaded_bytes
             session.completed_files.add(session.current_running_file.file_type)
         session.current_running_file = FileDownloadRunning(
-            file_type=file_type,
+            file_type=cp_id,
             target_path=target,
             downloaded_bytes=0,
             speed_bytes_per_sec=0.0,
@@ -100,25 +112,25 @@ class DownloadHandler(StateHandlerBase):
         self.state.downloading_session = None
 
     @with_state_lock
-    def update_file_progress(self, file_type: ModelFileType, downloaded: int, speed_bytes_per_sec: float) -> None:
+    def update_file_progress(self, cp_id: ModelCheckpointID, downloaded: int, speed_bytes_per_sec: float) -> None:
         session = self.state.downloading_session
         if session is None:
             return
-        rf = session.current_running_file
-        if rf is None or rf.file_type != file_type:
+        current = session.current_running_file
+        if current is None or current.file_type != cp_id:
             return
-        rf.downloaded_bytes = downloaded
-        rf.speed_bytes_per_sec = speed_bytes_per_sec
+        current.downloaded_bytes = downloaded
+        current.speed_bytes_per_sec = speed_bytes_per_sec
 
     @with_state_lock
     def fail_download(self, error: str) -> None:
-        logger.error("Model download failed: %s", error)
+        logger.error("Checkpoint download failed: %s", error)
         session = self.state.downloading_session
         if session is not None:
             self.state.completed_download_sessions[session.id] = DownloadSessionError(error_message=error)
             self.state.downloading_session = None
 
-    def _make_progress_callback(self, file_type: ModelFileType) -> Callable[[int], None]:
+    def _make_progress_callback(self, cp_id: ModelCheckpointID) -> Callable[[int], None]:
         last_sample_time = time.monotonic()
         last_sample_bytes = 0
         smoothed_speed = 0.0
@@ -129,15 +141,13 @@ class DownloadHandler(StateHandlerBase):
             elapsed = now - last_sample_time
             if elapsed >= 1.0:
                 instant_speed = (downloaded - last_sample_bytes) / elapsed
-                # EWMA: weight new sample at 30%, keep 70% of previous.
-                # On first sample (smoothed_speed == 0) use instant value.
                 if smoothed_speed == 0.0:
                     smoothed_speed = instant_speed
                 else:
                     smoothed_speed = 0.3 * instant_speed + 0.7 * smoothed_speed
                 last_sample_time = now
                 last_sample_bytes = downloaded
-            self.update_file_progress(file_type, downloaded, smoothed_speed)
+            self.update_file_progress(cp_id, downloaded, smoothed_speed)
 
         return on_progress
 
@@ -149,19 +159,16 @@ class DownloadHandler(StateHandlerBase):
         typed_session_id = DownloadSessionId(session_id)
         session = self.state.downloading_session
         if session is not None and session.id == typed_session_id:
-            rf = session.current_running_file
-            current_downloaded = rf.downloaded_bytes if rf else 0
+            current = session.current_running_file
+            current_downloaded = current.downloaded_bytes if current else 0
             total_downloaded = session.completed_bytes + current_downloaded
-
-            expected_total_bytes = sum(
-                self.config.spec_for(ft).expected_size_bytes for ft in session.files_to_download
-            )
+            expected_total_bytes = sum(get_model_cp_spec(cp_id).expected_size_bytes for cp_id in session.files_to_download)
 
             current_file_progress = 0.0
-            if rf is not None:
-                spec = self.config.spec_for(rf.file_type)
+            if current is not None:
+                spec = get_model_cp_spec(current.file_type)
                 if spec.expected_size_bytes > 0:
-                    current_file_progress = min(99.0, rf.downloaded_bytes / spec.expected_size_bytes * 100)
+                    current_file_progress = min(99.0, current.downloaded_bytes / spec.expected_size_bytes * 100)
 
             total_progress = 0.0
             if expected_total_bytes > 0:
@@ -169,14 +176,14 @@ class DownloadHandler(StateHandlerBase):
 
             return DownloadProgressRunningResponse(
                 status="downloading",
-                current_downloading_file=rf.file_type if rf else None,
+                current_downloading_file=current.file_type if current else None,
                 current_file_progress=current_file_progress,
                 total_progress=total_progress,
                 total_downloaded_bytes=total_downloaded,
                 expected_total_bytes=expected_total_bytes,
                 completed_files=set(session.completed_files),
                 all_files=set(session.files_to_download),
-                speed_bytes_per_sec=rf.speed_bytes_per_sec if rf else 0.0,
+                speed_bytes_per_sec=current.speed_bytes_per_sec if current else 0.0,
                 error=None,
             )
 
@@ -190,12 +197,48 @@ class DownloadHandler(StateHandlerBase):
 
         raise ValueError(f"Unknown download session: {session_id}")
 
-    def _move_to_final(self, file_type: ModelFileType) -> None:
-        """Move downloaded file/folder from downloading dir to final location."""
-        spec = self.config.spec_for(file_type)
-        src = resolve_downloading_target_path(self.models_dir, self.config.model_download_specs, file_type)
-        dst = resolve_model_path(self.models_dir, self.config.model_download_specs, file_type)
+    def cleanup_downloading_dir(self) -> None:
+        downloading_dir = resolve_downloading_dir(self.models_dir)
+        if downloading_dir.exists():
+            shutil.rmtree(downloading_dir)
 
+    def _download_to_staging(self, cp_id: ModelCheckpointID, hf_token: str | None) -> None:
+        spec = get_model_cp_spec(cp_id)
+        self.start_file(cp_id, spec.name)
+        progress_cb = self._make_progress_callback(cp_id)
+
+        resolve_downloading_dir(self.models_dir).mkdir(parents=True, exist_ok=True)
+
+        if spec.is_folder:
+            self._model_downloader.download_snapshot(
+                repo_id=spec.repo_id,
+                local_dir=str(resolve_downloading_path(self.models_dir, cp_id)),
+                on_progress=progress_cb,
+                token=hf_token,
+            )
+        else:
+            self._model_downloader.download_file(
+                repo_id=spec.repo_id,
+                filename=spec.name,
+                local_dir=str(resolve_downloading_path(self.models_dir, cp_id)),
+                on_progress=progress_cb,
+                token=hf_token,
+            )
+
+    def _commit_staged_checkpoint(self, cp_id: ModelCheckpointID) -> bool:
+        src = resolve_downloading_target_path(self.models_dir, cp_id)
+        dst = resolve_model_path(self.models_dir, cp_id)
+        spec = get_model_cp_spec(cp_id)
+
+        if is_cp_downloaded(self.models_dir, cp_id):
+            if src.exists():
+                if spec.is_folder:
+                    shutil.rmtree(src)
+                else:
+                    src.unlink(missing_ok=True)
+            return False
+
+        dst.parent.mkdir(parents=True, exist_ok=True)
         if spec.is_folder:
             if dst.exists():
                 shutil.rmtree(dst)
@@ -203,112 +246,107 @@ class DownloadHandler(StateHandlerBase):
         else:
             if dst.exists():
                 dst.unlink()
-            dst.parent.mkdir(parents=True, exist_ok=True)
             src.rename(dst)
+        return True
 
-    def cleanup_downloading_dir(self) -> None:
-        """Remove stale .downloading/ dir (leftover from crashed downloads)."""
-        downloading = resolve_downloading_dir(self.models_dir)
-        if downloading.exists():
-            shutil.rmtree(downloading)
+    def _rollback_committed_checkpoints(self, cp_ids: Iterable[ModelCheckpointID]) -> None:
+        for cp_id in cp_ids:
+            spec = get_model_cp_spec(cp_id)
+            path = resolve_model_path(self.models_dir, cp_id)
+            if spec.is_folder:
+                if path.exists():
+                    shutil.rmtree(path)
+            else:
+                path.unlink(missing_ok=True)
 
-    def _discover_files_to_download(self, model_types: set[ModelFileType]) -> dict[ModelFileType, str]:
-        """Determine which files need downloading (not already available)."""
-        self._models_handler.refresh_available_files()
-        available = self.state.available_files.copy()
+    def _discover_download_cp_ids(self, requested_cp_ids: set[ModelCheckpointID]) -> tuple[ModelCheckpointID, ...]:
+        missing: set[ModelCheckpointID] = set()
+        for cp_id in requested_cp_ids:
+            if not self._models_handler.is_cp_downloaded(cp_id):
+                missing.add(cp_id)
+        return self._ordered_cp_ids(missing)
 
-        files_to_download: dict[ModelFileType, str] = {}
-        for model_type in MODEL_FILE_ORDER:
-            if model_type not in model_types:
-                continue
-            if available[model_type] is not None:
-                continue
-            spec = self.config.spec_for(model_type)
-            files_to_download[model_type] = spec.name
-        return files_to_download
-
-    def _download_models_worker(self, files_to_download: dict[ModelFileType, str]) -> None:
-        if not files_to_download:
+    def _download_worker(self, cp_ids: tuple[ModelCheckpointID, ...], *, atomic_commit: bool) -> None:
+        if not cp_ids:
             self.finish_download()
             return
 
-        for file_type, target_name in files_to_download.items():
-            spec = self.config.spec_for(file_type)
-            logger.info("Downloading %s from %s", target_name, spec.repo_id)
+        hf_token = require_hf_token(self.state, self._lock) if self.config.hf_gating_enabled else None
 
-            self.start_file(file_type, target_name)
-            progress_cb = self._make_progress_callback(file_type)
+        try:
+            if atomic_commit:
+                for cp_id in cp_ids:
+                    logger.info("Downloading %s from %s", cp_id, get_model_cp_spec(cp_id).repo_id)
+                    self._download_to_staging(cp_id, hf_token)
 
-            try:
-                resolve_downloading_dir(self.models_dir).mkdir(parents=True, exist_ok=True)
+                committed_cp_ids: list[ModelCheckpointID] = []
+                try:
+                    for cp_id in cp_ids:
+                        if self._commit_staged_checkpoint(cp_id):
+                            committed_cp_ids.append(cp_id)
+                except Exception:
+                    self._rollback_committed_checkpoints(committed_cp_ids)
+                    raise
+            else:
+                for cp_id in cp_ids:
+                    logger.info("Downloading %s from %s", cp_id, get_model_cp_spec(cp_id).repo_id)
+                    self._download_to_staging(cp_id, hf_token)
+                    self._commit_staged_checkpoint(cp_id)
+        except Exception:
+            self.cleanup_downloading_dir()
+            raise
 
-                if spec.is_folder:
-                    self._model_downloader.download_snapshot(
-                        repo_id=spec.repo_id,
-                        local_dir=str(resolve_downloading_path(self.models_dir, self.config.model_download_specs, file_type)),
-                        on_progress=progress_cb,
-                    )
-                else:
-                    self._model_downloader.download_file(
-                        repo_id=spec.repo_id,
-                        filename=spec.name,
-                        local_dir=str(resolve_downloading_path(self.models_dir, self.config.model_download_specs, file_type)),
-                        on_progress=progress_cb,
-                    )
-
-                self._move_to_final(file_type)
-            except Exception:
-                self.cleanup_downloading_dir()
-                raise
-
+        self.cleanup_downloading_dir()
         self.finish_download()
-        self._models_handler.refresh_available_files()
 
-    def start_model_download(self, model_types: set[ModelFileType]) -> DownloadSessionId | None:
+    def start_model_download(self, *, download_type: str, cp_ids: set[ModelCheckpointID]) -> DownloadSessionId:
+        if self.config.force_api_generations:
+            raise HTTPError(409, "LOCAL_MODEL_DOWNLOADS_DISABLED_IN_FORCE_API_MODE")
+
         with self._lock:
             if self.state.downloading_session is not None:
-                return None
+                raise HTTPError(409, "DOWNLOAD_ALREADY_RUNNING")
 
-        files_to_download = self._discover_files_to_download(model_types)
-        session_id = self.start_download(set(files_to_download.keys()))
+        if download_type == "upgrade":
+            resolved_upgrade = self._models_handler.resolve_upgrade_download(cp_ids)
+            cp_ids_to_download = set(resolved_upgrade.cp_ids)
+            ordered_cp_ids = resolved_upgrade.cp_ids
+            atomic_commit = True
+        elif download_type == "download":
+            cp_ids_to_download = set(cp_ids)
+            ordered_cp_ids = self._discover_download_cp_ids(cp_ids_to_download)
+            atomic_commit = False
+        else:
+            raise HTTPError(400, "INVALID_DOWNLOAD_REQUEST")
 
+        session_id = self.start_download(set(ordered_cp_ids))
         self._task_runner.run_background(
-            lambda: self._download_models_worker(files_to_download),
+            lambda: self._download_worker(ordered_cp_ids, atomic_commit=atomic_commit),
             task_name="model-download",
             on_error=self._on_background_download_error,
             daemon=True,
         )
         return session_id
 
-    def start_text_encoder_download(self) -> DownloadSessionId | None:
-        with self._lock:
-            if self.state.downloading_session is not None:
-                return None
+    def check_model_access(self, cp_ids: set[ModelCheckpointID]) -> CheckModelAccessResponse:
+        repo_ids = {get_model_cp_spec(cp_id).repo_id for cp_id in cp_ids}
 
-        text_spec = self.config.spec_for("text_encoder")
-        session_id = self.start_download({"text_encoder"})
+        if not self.config.hf_gating_enabled:
+            return CheckModelAccessResponse(access={repo_id: "authorized" for repo_id in repo_ids})
 
-        def worker() -> None:
-            self.start_file("text_encoder", text_spec.name)
-            progress_cb = self._make_progress_callback("text_encoder")
+        hf_token = require_hf_token(self.state, self._lock)
+
+        access: dict[str, ModelAccessStatus] = {}
+        for repo_id in sorted(repo_ids):
             try:
-                resolve_downloading_dir(self.models_dir).mkdir(parents=True, exist_ok=True)
-                self._model_downloader.download_snapshot(
-                    repo_id=text_spec.repo_id,
-                    local_dir=str(resolve_downloading_path(self.models_dir, self.config.model_download_specs, "text_encoder")),
-                    on_progress=progress_cb,
+                response = http_requests.head(
+                    f"https://huggingface.co/{repo_id}/resolve/main/.gitattributes",
+                    headers={"Authorization": f"Bearer {hf_token}"},
+                    allow_redirects=True,
+                    timeout=10,
                 )
-                self._move_to_final("text_encoder")
+                access[repo_id] = "authorized" if response.status_code == 200 else "not_authorized"
             except Exception:
-                self.cleanup_downloading_dir()
-                raise
-            self.finish_download()
-            self._models_handler.refresh_available_files()
+                access[repo_id] = "not_authorized"
 
-        self._task_runner.run_background(
-            worker,
-            task_name="text-encoder-download",
-            on_error=self._on_background_download_error,
-            daemon=True,
-        )
-        return session_id
+        return CheckModelAccessResponse(access=access)

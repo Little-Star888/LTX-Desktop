@@ -159,9 +159,37 @@ export function registerFileHandlers(): void {
     return true
   })
 
+  handle('openLtxBillingPage', async () => {
+    const { shell } = await import('electron')
+    await shell.openExternal('https://console.ltx.video/billings/#buy')
+    return true
+  })
+
   handle('openFalApiKeyPage', async () => {
     const { shell } = await import('electron')
     await shell.openExternal('https://fal.ai/dashboard/keys')
+    return true
+  })
+
+  handle('openHuggingFaceRepo', async ({ repoId }) => {
+    const { shell } = await import('electron')
+    await shell.openExternal(`https://huggingface.co/${repoId}`)
+    return true
+  })
+
+  const HF_AUTHORIZE_URL = 'https://huggingface.co/oauth/authorize'
+
+  handle('openHuggingFaceAuth', async (params) => {
+    const { shell } = await import('electron')
+    const url = new URL(HF_AUTHORIZE_URL)
+    url.searchParams.set('client_id', params.clientId)
+    url.searchParams.set('redirect_uri', params.redirectUri)
+    url.searchParams.set('response_type', 'code')
+    url.searchParams.set('scope', params.scope)
+    url.searchParams.set('state', params.state)
+    url.searchParams.set('code_challenge', params.codeChallenge)
+    url.searchParams.set('code_challenge_method', params.codeChallengeMethod)
+    await shell.openExternal(url.toString())
     return true
   })
 

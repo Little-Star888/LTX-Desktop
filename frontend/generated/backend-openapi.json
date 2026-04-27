@@ -15,16 +15,6 @@
             ],
             "title": "Falapikey"
           },
-          "fastModel": {
-            "anyOf": [
-              {
-                "$ref": "#/components/schemas/FastModelSettingsPatch"
-              },
-              {
-                "type": "null"
-              }
-            ]
-          },
           "geminiApiKey": {
             "anyOf": [
               {
@@ -35,17 +25,6 @@
               }
             ],
             "title": "Geminiapikey"
-          },
-          "loadOnStartup": {
-            "anyOf": [
-              {
-                "type": "boolean"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Loadonstartup"
           },
           "lockedSeed": {
             "anyOf": [
@@ -79,16 +58,6 @@
               }
             ],
             "title": "Modelsdir"
-          },
-          "proModel": {
-            "anyOf": [
-              {
-                "$ref": "#/components/schemas/ProModelSettingsPatch"
-              },
-              {
-                "type": "null"
-              }
-            ]
           },
           "promptCacheSize": {
             "anyOf": [
@@ -204,6 +173,50 @@
         "title": "CancelNoActiveGenerationResponse",
         "type": "object"
       },
+      "CheckModelAccessRequest": {
+        "properties": {
+          "cp_ids": {
+            "items": {
+              "enum": [
+                "ltx-2.3-22b-distilled",
+                "ltx-2.3-spatial-upscaler-x2-1.0",
+                "ltx-2.3-22b-ic-lora-union-control-ref0.5",
+                "dpt-hybrid-midas",
+                "yolox-l-torchscript",
+                "dw-ll-ucoco-384-bs5",
+                "gemma-3-12b-it-qat-q4_0-unquantized",
+                "z-image-turbo"
+              ],
+              "type": "string"
+            },
+            "title": "Cp Ids",
+            "type": "array",
+            "uniqueItems": true
+          }
+        },
+        "title": "CheckModelAccessRequest",
+        "type": "object"
+      },
+      "CheckModelAccessResponse": {
+        "properties": {
+          "access": {
+            "additionalProperties": {
+              "enum": [
+                "authorized",
+                "not_authorized"
+              ],
+              "type": "string"
+            },
+            "title": "Access",
+            "type": "object"
+          }
+        },
+        "required": [
+          "access"
+        ],
+        "title": "CheckModelAccessResponse",
+        "type": "object"
+      },
       "DownloadProgressCompleteResponse": {
         "properties": {
           "status": {
@@ -242,15 +255,14 @@
           "all_files": {
             "items": {
               "enum": [
-                "checkpoint",
-                "upsampler",
-                "distilled_lora",
-                "ic_lora",
-                "depth_processor",
-                "person_detector",
-                "pose_processor",
-                "text_encoder",
-                "zit"
+                "ltx-2.3-22b-distilled",
+                "ltx-2.3-spatial-upscaler-x2-1.0",
+                "ltx-2.3-22b-ic-lora-union-control-ref0.5",
+                "dpt-hybrid-midas",
+                "yolox-l-torchscript",
+                "dw-ll-ucoco-384-bs5",
+                "gemma-3-12b-it-qat-q4_0-unquantized",
+                "z-image-turbo"
               ],
               "type": "string"
             },
@@ -261,15 +273,14 @@
           "completed_files": {
             "items": {
               "enum": [
-                "checkpoint",
-                "upsampler",
-                "distilled_lora",
-                "ic_lora",
-                "depth_processor",
-                "person_detector",
-                "pose_processor",
-                "text_encoder",
-                "zit"
+                "ltx-2.3-22b-distilled",
+                "ltx-2.3-spatial-upscaler-x2-1.0",
+                "ltx-2.3-22b-ic-lora-union-control-ref0.5",
+                "dpt-hybrid-midas",
+                "yolox-l-torchscript",
+                "dw-ll-ucoco-384-bs5",
+                "gemma-3-12b-it-qat-q4_0-unquantized",
+                "z-image-turbo"
               ],
               "type": "string"
             },
@@ -281,15 +292,14 @@
             "anyOf": [
               {
                 "enum": [
-                  "checkpoint",
-                  "upsampler",
-                  "distilled_lora",
-                  "ic_lora",
-                  "depth_processor",
-                  "person_detector",
-                  "pose_processor",
-                  "text_encoder",
-                  "zit"
+                  "ltx-2.3-22b-distilled",
+                  "ltx-2.3-spatial-upscaler-x2-1.0",
+                  "ltx-2.3-22b-ic-lora-union-control-ref0.5",
+                  "dpt-hybrid-midas",
+                  "yolox-l-torchscript",
+                  "dw-ll-ucoco-384-bs5",
+                  "gemma-3-12b-it-qat-q4_0-unquantized",
+                  "z-image-turbo"
                 ],
                 "type": "string"
               },
@@ -341,35 +351,6 @@
           "speed_bytes_per_sec"
         ],
         "title": "DownloadProgressRunningResponse",
-        "type": "object"
-      },
-      "FastModelSettings": {
-        "properties": {
-          "useUpscaler": {
-            "default": true,
-            "title": "Useupscaler",
-            "type": "boolean"
-          }
-        },
-        "title": "FastModelSettings",
-        "type": "object"
-      },
-      "FastModelSettingsPatch": {
-        "additionalProperties": false,
-        "properties": {
-          "useUpscaler": {
-            "anyOf": [
-              {
-                "type": "boolean"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Useupscaler"
-          }
-        },
-        "title": "FastModelSettingsPatch",
         "type": "object"
       },
       "GenerateImageCancelledResponse": {
@@ -479,6 +460,30 @@
         "title": "GenerateVideoCompleteResponse",
         "type": "object"
       },
+      "GenerateVideoModelsSpecsResponse": {
+        "properties": {
+          "api_models": {
+            "items": {
+              "$ref": "#/components/schemas/LTXVideoGenerationModelSpecItem"
+            },
+            "title": "Api Models",
+            "type": "array"
+          },
+          "local_models": {
+            "items": {
+              "$ref": "#/components/schemas/LTXVideoGenerationModelSpecItem"
+            },
+            "title": "Local Models",
+            "type": "array"
+          }
+        },
+        "required": [
+          "local_models",
+          "api_models"
+        ],
+        "title": "GenerateVideoModelsSpecsResponse",
+        "type": "object"
+      },
       "GenerateVideoRequest": {
         "properties": {
           "aspectRatio": {
@@ -523,14 +528,29 @@
             "type": "string"
           },
           "duration": {
-            "default": 2,
-            "minimum": 1.0,
+            "default": 5,
+            "enum": [
+              5,
+              6,
+              8,
+              10,
+              12,
+              14,
+              16,
+              18,
+              20
+            ],
             "title": "Duration",
             "type": "integer"
           },
           "fps": {
             "default": 24,
-            "minimum": 1.0,
+            "enum": [
+              24,
+              25,
+              48,
+              50
+            ],
             "title": "Fps",
             "type": "integer"
           },
@@ -711,17 +731,22 @@
         "title": "GpuTelemetry",
         "type": "object"
       },
-      "HTTPValidationError": {
+      "HTTPErrorResponse": {
         "properties": {
-          "detail": {
-            "items": {
-              "$ref": "#/components/schemas/ValidationError"
-            },
-            "title": "Detail",
-            "type": "array"
+          "code": {
+            "title": "Code",
+            "type": "string"
+          },
+          "message": {
+            "title": "Message",
+            "type": "string"
           }
         },
-        "title": "HTTPValidationError",
+        "required": [
+          "code",
+          "message"
+        ],
+        "title": "HTTPErrorResponse",
         "type": "object"
       },
       "HealthResponse": {
@@ -770,6 +795,76 @@
           "models_status"
         ],
         "title": "HealthResponse",
+        "type": "object"
+      },
+      "HuggingFaceAuthStatusResponse": {
+        "properties": {
+          "status": {
+            "enum": [
+              "authenticated",
+              "pending",
+              "not_authenticated"
+            ],
+            "title": "Status",
+            "type": "string"
+          }
+        },
+        "required": [
+          "status"
+        ],
+        "title": "HuggingFaceAuthStatusResponse",
+        "type": "object"
+      },
+      "HuggingFaceLoginResponse": {
+        "properties": {
+          "client_id": {
+            "title": "Client Id",
+            "type": "string"
+          },
+          "code_challenge": {
+            "title": "Code Challenge",
+            "type": "string"
+          },
+          "code_challenge_method": {
+            "title": "Code Challenge Method",
+            "type": "string"
+          },
+          "redirect_uri": {
+            "title": "Redirect Uri",
+            "type": "string"
+          },
+          "scope": {
+            "title": "Scope",
+            "type": "string"
+          },
+          "state": {
+            "title": "State",
+            "type": "string"
+          }
+        },
+        "required": [
+          "client_id",
+          "redirect_uri",
+          "scope",
+          "state",
+          "code_challenge",
+          "code_challenge_method"
+        ],
+        "title": "HuggingFaceLoginResponse",
+        "type": "object"
+      },
+      "HuggingFaceLogoutResponse": {
+        "properties": {
+          "status": {
+            "const": "logged_out",
+            "title": "Status",
+            "type": "string"
+          }
+        },
+        "required": [
+          "status"
+        ],
+        "title": "HuggingFaceLogoutResponse",
         "type": "object"
       },
       "IcLoraExtractRequest": {
@@ -942,26 +1037,350 @@
         "title": "IcLoraImageInput",
         "type": "object"
       },
-      "ModelDownloadRequest": {
+      "ImageGenRecommendationResponse": {
         "properties": {
-          "modelTypes": {
+          "cp_to_download": {
+            "anyOf": [
+              {
+                "enum": [
+                  "ltx-2.3-22b-distilled",
+                  "ltx-2.3-spatial-upscaler-x2-1.0",
+                  "ltx-2.3-22b-ic-lora-union-control-ref0.5",
+                  "dpt-hybrid-midas",
+                  "yolox-l-torchscript",
+                  "dw-ll-ucoco-384-bs5",
+                  "gemma-3-12b-it-qat-q4_0-unquantized",
+                  "z-image-turbo"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Cp To Download"
+          }
+        },
+        "required": [
+          "cp_to_download"
+        ],
+        "title": "ImageGenRecommendationResponse",
+        "type": "object"
+      },
+      "LTXVideoGenerationModelSpecItem": {
+        "properties": {
+          "pipeline": {
+            "enum": [
+              "fast",
+              "pro"
+            ],
+            "title": "Pipeline",
+            "type": "string"
+          },
+          "spec": {
+            "$ref": "#/components/schemas/LTXVideoGenerationSpec"
+          }
+        },
+        "required": [
+          "pipeline",
+          "spec"
+        ],
+        "title": "LTXVideoGenerationModelSpecItem",
+        "type": "object"
+      },
+      "LTXVideoGenerationResolutionSpec": {
+        "properties": {
+          "fps_to_durations": {
+            "additionalProperties": {
+              "items": {
+                "enum": [
+                  5,
+                  6,
+                  8,
+                  10,
+                  12,
+                  14,
+                  16,
+                  18,
+                  20
+                ],
+                "type": "integer"
+              },
+              "type": "array"
+            },
+            "title": "Fps To Durations",
+            "type": "object"
+          }
+        },
+        "required": [
+          "fps_to_durations"
+        ],
+        "title": "LTXVideoGenerationResolutionSpec",
+        "type": "object"
+      },
+      "LTXVideoGenerationSpec": {
+        "properties": {
+          "a2v_supported_resolutions_durations": {
+            "anyOf": [
+              {
+                "additionalProperties": {
+                  "$ref": "#/components/schemas/LTXVideoGenerationResolutionSpec"
+                },
+                "propertyNames": {
+                  "enum": [
+                    "540p",
+                    "720p",
+                    "1080p",
+                    "1440p",
+                    "2160p"
+                  ]
+                },
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "A2V Supported Resolutions Durations"
+          },
+          "display_name": {
+            "title": "Display Name",
+            "type": "string"
+          },
+          "supported_resolutions_durations": {
+            "additionalProperties": {
+              "$ref": "#/components/schemas/LTXVideoGenerationResolutionSpec"
+            },
+            "propertyNames": {
+              "enum": [
+                "540p",
+                "720p",
+                "1080p",
+                "1440p",
+                "2160p"
+              ]
+            },
+            "title": "Supported Resolutions Durations",
+            "type": "object"
+          }
+        },
+        "required": [
+          "display_name",
+          "supported_resolutions_durations"
+        ],
+        "title": "LTXVideoGenerationSpec",
+        "type": "object"
+      },
+      "LtxDownloadRecommendationResponse": {
+        "properties": {
+          "cps_to_download": {
             "items": {
               "enum": [
-                "checkpoint",
-                "upsampler",
-                "distilled_lora",
-                "ic_lora",
-                "depth_processor",
-                "person_detector",
-                "pose_processor",
-                "text_encoder",
-                "zit"
+                "ltx-2.3-22b-distilled",
+                "ltx-2.3-spatial-upscaler-x2-1.0",
+                "ltx-2.3-22b-ic-lora-union-control-ref0.5",
+                "dpt-hybrid-midas",
+                "yolox-l-torchscript",
+                "dw-ll-ucoco-384-bs5",
+                "gemma-3-12b-it-qat-q4_0-unquantized",
+                "z-image-turbo"
               ],
               "type": "string"
             },
-            "title": "Modeltypes",
+            "title": "Cps To Download",
+            "type": "array"
+          },
+          "status": {
+            "const": "download",
+            "title": "Status",
+            "type": "string"
+          }
+        },
+        "required": [
+          "status",
+          "cps_to_download"
+        ],
+        "title": "LtxDownloadRecommendationResponse",
+        "type": "object"
+      },
+      "LtxIcLoraRecommendationResponse": {
+        "properties": {
+          "cps_to_download": {
+            "items": {
+              "enum": [
+                "ltx-2.3-22b-distilled",
+                "ltx-2.3-spatial-upscaler-x2-1.0",
+                "ltx-2.3-22b-ic-lora-union-control-ref0.5",
+                "dpt-hybrid-midas",
+                "yolox-l-torchscript",
+                "dw-ll-ucoco-384-bs5",
+                "gemma-3-12b-it-qat-q4_0-unquantized",
+                "z-image-turbo"
+              ],
+              "type": "string"
+            },
+            "title": "Cps To Download",
+            "type": "array"
+          }
+        },
+        "required": [
+          "cps_to_download"
+        ],
+        "title": "LtxIcLoraRecommendationResponse",
+        "type": "object"
+      },
+      "LtxInsufficientFundsErrorResponse": {
+        "properties": {
+          "code": {
+            "const": "LTX_INSUFFICIENT_FUNDS",
+            "title": "Code",
+            "type": "string"
+          },
+          "message": {
+            "title": "Message",
+            "type": "string"
+          }
+        },
+        "required": [
+          "code",
+          "message"
+        ],
+        "title": "LtxInsufficientFundsErrorResponse",
+        "type": "object"
+      },
+      "LtxOkRecommendationResponse": {
+        "properties": {
+          "status": {
+            "const": "ok",
+            "title": "Status",
+            "type": "string"
+          }
+        },
+        "required": [
+          "status"
+        ],
+        "title": "LtxOkRecommendationResponse",
+        "type": "object"
+      },
+      "LtxUpgradeRecommendationResponse": {
+        "properties": {
+          "cps_to_delete": {
+            "items": {
+              "enum": [
+                "ltx-2.3-22b-distilled",
+                "ltx-2.3-spatial-upscaler-x2-1.0",
+                "ltx-2.3-22b-ic-lora-union-control-ref0.5",
+                "dpt-hybrid-midas",
+                "yolox-l-torchscript",
+                "dw-ll-ucoco-384-bs5",
+                "gemma-3-12b-it-qat-q4_0-unquantized",
+                "z-image-turbo"
+              ],
+              "type": "string"
+            },
+            "title": "Cps To Delete",
+            "type": "array"
+          },
+          "cps_to_download": {
+            "items": {
+              "enum": [
+                "ltx-2.3-22b-distilled",
+                "ltx-2.3-spatial-upscaler-x2-1.0",
+                "ltx-2.3-22b-ic-lora-union-control-ref0.5",
+                "dpt-hybrid-midas",
+                "yolox-l-torchscript",
+                "dw-ll-ucoco-384-bs5",
+                "gemma-3-12b-it-qat-q4_0-unquantized",
+                "z-image-turbo"
+              ],
+              "type": "string"
+            },
+            "title": "Cps To Download",
+            "type": "array"
+          },
+          "ltx_model_id": {
+            "const": "ltx-2.3-22b-distilled",
+            "title": "Ltx Model Id",
+            "type": "string"
+          },
+          "status": {
+            "const": "upgrade",
+            "title": "Status",
+            "type": "string"
+          },
+          "upgrade_message": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Upgrade Message"
+          }
+        },
+        "required": [
+          "status",
+          "ltx_model_id",
+          "cps_to_download",
+          "cps_to_delete"
+        ],
+        "title": "LtxUpgradeRecommendationResponse",
+        "type": "object"
+      },
+      "ModelDeleteRequest": {
+        "properties": {
+          "cp_ids": {
+            "items": {
+              "enum": [
+                "ltx-2.3-22b-distilled",
+                "ltx-2.3-spatial-upscaler-x2-1.0",
+                "ltx-2.3-22b-ic-lora-union-control-ref0.5",
+                "dpt-hybrid-midas",
+                "yolox-l-torchscript",
+                "dw-ll-ucoco-384-bs5",
+                "gemma-3-12b-it-qat-q4_0-unquantized",
+                "z-image-turbo"
+              ],
+              "type": "string"
+            },
+            "title": "Cp Ids",
             "type": "array",
             "uniqueItems": true
+          }
+        },
+        "title": "ModelDeleteRequest",
+        "type": "object"
+      },
+      "ModelDownloadRequest": {
+        "properties": {
+          "cp_ids": {
+            "items": {
+              "enum": [
+                "ltx-2.3-22b-distilled",
+                "ltx-2.3-spatial-upscaler-x2-1.0",
+                "ltx-2.3-22b-ic-lora-union-control-ref0.5",
+                "dpt-hybrid-midas",
+                "yolox-l-torchscript",
+                "dw-ll-ucoco-384-bs5",
+                "gemma-3-12b-it-qat-q4_0-unquantized",
+                "z-image-turbo"
+              ],
+              "type": "string"
+            },
+            "title": "Cp Ids",
+            "type": "array",
+            "uniqueItems": true
+          },
+          "type": {
+            "default": "download",
+            "enum": [
+              "download",
+              "upgrade"
+            ],
+            "title": "Type",
+            "type": "string"
           }
         },
         "title": "ModelDownloadRequest",
@@ -991,99 +1410,6 @@
         "title": "ModelDownloadStartResponse",
         "type": "object"
       },
-      "ModelFileStatus": {
-        "properties": {
-          "description": {
-            "title": "Description",
-            "type": "string"
-          },
-          "downloaded": {
-            "title": "Downloaded",
-            "type": "boolean"
-          },
-          "expected_size": {
-            "title": "Expected Size",
-            "type": "integer"
-          },
-          "id": {
-            "enum": [
-              "checkpoint",
-              "upsampler",
-              "distilled_lora",
-              "ic_lora",
-              "depth_processor",
-              "person_detector",
-              "pose_processor",
-              "text_encoder",
-              "zit"
-            ],
-            "title": "Id",
-            "type": "string"
-          },
-          "is_folder": {
-            "default": false,
-            "title": "Is Folder",
-            "type": "boolean"
-          },
-          "name": {
-            "title": "Name",
-            "type": "string"
-          },
-          "optional_reason": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Optional Reason"
-          },
-          "required": {
-            "default": true,
-            "title": "Required",
-            "type": "boolean"
-          },
-          "size": {
-            "title": "Size",
-            "type": "integer"
-          }
-        },
-        "required": [
-          "id",
-          "name",
-          "description",
-          "downloaded",
-          "size",
-          "expected_size"
-        ],
-        "title": "ModelFileStatus",
-        "type": "object"
-      },
-      "ModelInfo": {
-        "properties": {
-          "description": {
-            "title": "Description",
-            "type": "string"
-          },
-          "id": {
-            "title": "Id",
-            "type": "string"
-          },
-          "name": {
-            "title": "Name",
-            "type": "string"
-          }
-        },
-        "required": [
-          "id",
-          "name",
-          "description"
-        ],
-        "title": "ModelInfo",
-        "type": "object"
-      },
       "ModelStatusItem": {
         "properties": {
           "downloaded": {
@@ -1110,138 +1436,6 @@
           "downloaded"
         ],
         "title": "ModelStatusItem",
-        "type": "object"
-      },
-      "ModelsStatusResponse": {
-        "properties": {
-          "all_downloaded": {
-            "title": "All Downloaded",
-            "type": "boolean"
-          },
-          "downloaded_size": {
-            "title": "Downloaded Size",
-            "type": "integer"
-          },
-          "downloaded_size_gb": {
-            "title": "Downloaded Size Gb",
-            "type": "number"
-          },
-          "has_api_key": {
-            "title": "Has Api Key",
-            "type": "boolean"
-          },
-          "models": {
-            "items": {
-              "$ref": "#/components/schemas/ModelFileStatus"
-            },
-            "title": "Models",
-            "type": "array"
-          },
-          "models_path": {
-            "title": "Models Path",
-            "type": "string"
-          },
-          "text_encoder_status": {
-            "$ref": "#/components/schemas/TextEncoderStatus"
-          },
-          "total_size": {
-            "title": "Total Size",
-            "type": "integer"
-          },
-          "total_size_gb": {
-            "title": "Total Size Gb",
-            "type": "number"
-          },
-          "use_local_text_encoder": {
-            "title": "Use Local Text Encoder",
-            "type": "boolean"
-          }
-        },
-        "required": [
-          "models",
-          "all_downloaded",
-          "total_size",
-          "downloaded_size",
-          "total_size_gb",
-          "downloaded_size_gb",
-          "models_path",
-          "has_api_key",
-          "text_encoder_status",
-          "use_local_text_encoder"
-        ],
-        "title": "ModelsStatusResponse",
-        "type": "object"
-      },
-      "ProModelSettings": {
-        "properties": {
-          "steps": {
-            "default": 20,
-            "title": "Steps",
-            "type": "integer"
-          },
-          "useUpscaler": {
-            "default": true,
-            "title": "Useupscaler",
-            "type": "boolean"
-          }
-        },
-        "title": "ProModelSettings",
-        "type": "object"
-      },
-      "ProModelSettingsPatch": {
-        "additionalProperties": false,
-        "properties": {
-          "steps": {
-            "anyOf": [
-              {
-                "type": "integer"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Steps"
-          },
-          "useUpscaler": {
-            "anyOf": [
-              {
-                "type": "boolean"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Useupscaler"
-          }
-        },
-        "title": "ProModelSettingsPatch",
-        "type": "object"
-      },
-      "RequiredModelsResponse": {
-        "properties": {
-          "modelTypes": {
-            "items": {
-              "enum": [
-                "checkpoint",
-                "upsampler",
-                "distilled_lora",
-                "ic_lora",
-                "depth_processor",
-                "person_detector",
-                "pose_processor",
-                "text_encoder",
-                "zit"
-              ],
-              "type": "string"
-            },
-            "title": "Modeltypes",
-            "type": "array"
-          }
-        },
-        "required": [
-          "modelTypes"
-        ],
-        "title": "RequiredModelsResponse",
         "type": "object"
       },
       "RetakeCancelledResponse": {
@@ -1350,9 +1544,6 @@
       },
       "SettingsResponse": {
         "properties": {
-          "fastModel": {
-            "$ref": "#/components/schemas/FastModelSettings"
-          },
           "hasFalApiKey": {
             "default": false,
             "title": "Hasfalapikey",
@@ -1368,11 +1559,6 @@
             "title": "Hasltxapikey",
             "type": "boolean"
           },
-          "loadOnStartup": {
-            "default": false,
-            "title": "Loadonstartup",
-            "type": "boolean"
-          },
           "lockedSeed": {
             "default": 42,
             "title": "Lockedseed",
@@ -1382,9 +1568,6 @@
             "default": "",
             "title": "Modelsdir",
             "type": "string"
-          },
-          "proModel": {
-            "$ref": "#/components/schemas/ProModelSettings"
           },
           "promptCacheSize": {
             "default": 100,
@@ -1521,115 +1704,44 @@
         "title": "SuggestGapPromptResponse",
         "type": "object"
       },
-      "TextEncoderAlreadyDownloadedResponse": {
+      "TextEncoderRecommendationResponse": {
         "properties": {
-          "message": {
-            "title": "Message",
-            "type": "string"
+          "cp_to_download": {
+            "anyOf": [
+              {
+                "enum": [
+                  "ltx-2.3-22b-distilled",
+                  "ltx-2.3-spatial-upscaler-x2-1.0",
+                  "ltx-2.3-22b-ic-lora-union-control-ref0.5",
+                  "dpt-hybrid-midas",
+                  "yolox-l-torchscript",
+                  "dw-ll-ucoco-384-bs5",
+                  "gemma-3-12b-it-qat-q4_0-unquantized",
+                  "z-image-turbo"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Cp To Download"
           },
-          "status": {
-            "const": "already_downloaded",
-            "title": "Status",
-            "type": "string"
-          }
-        },
-        "required": [
-          "status",
-          "message"
-        ],
-        "title": "TextEncoderAlreadyDownloadedResponse",
-        "type": "object"
-      },
-      "TextEncoderDownloadStartedResponse": {
-        "properties": {
-          "message": {
-            "title": "Message",
-            "type": "string"
-          },
-          "sessionId": {
-            "title": "Sessionid",
-            "type": "string"
-          },
-          "status": {
-            "const": "started",
-            "title": "Status",
-            "type": "string"
-          }
-        },
-        "required": [
-          "status",
-          "message",
-          "sessionId"
-        ],
-        "title": "TextEncoderDownloadStartedResponse",
-        "type": "object"
-      },
-      "TextEncoderStatus": {
-        "properties": {
-          "downloaded": {
-            "title": "Downloaded",
-            "type": "boolean"
+          "expected_size_bytes": {
+            "title": "Expected Size Bytes",
+            "type": "integer"
           },
           "expected_size_gb": {
             "title": "Expected Size Gb",
             "type": "number"
-          },
-          "size_bytes": {
-            "title": "Size Bytes",
-            "type": "integer"
-          },
-          "size_gb": {
-            "title": "Size Gb",
-            "type": "number"
           }
         },
         "required": [
-          "downloaded",
-          "size_bytes",
-          "size_gb",
+          "cp_to_download",
+          "expected_size_bytes",
           "expected_size_gb"
         ],
-        "title": "TextEncoderStatus",
-        "type": "object"
-      },
-      "ValidationError": {
-        "properties": {
-          "ctx": {
-            "title": "Context",
-            "type": "object"
-          },
-          "input": {
-            "title": "Input"
-          },
-          "loc": {
-            "items": {
-              "anyOf": [
-                {
-                  "type": "string"
-                },
-                {
-                  "type": "integer"
-                }
-              ]
-            },
-            "title": "Location",
-            "type": "array"
-          },
-          "msg": {
-            "title": "Message",
-            "type": "string"
-          },
-          "type": {
-            "title": "Error Type",
-            "type": "string"
-          }
-        },
-        "required": [
-          "loc",
-          "msg",
-          "type"
-        ],
-        "title": "ValidationError",
+        "title": "TextEncoderRecommendationResponse",
         "type": "object"
       }
     }
@@ -1640,6 +1752,202 @@
   },
   "openapi": "3.1.0",
   "paths": {
+    "/api/auth/huggingface/callback": {
+      "get": {
+        "operationId": "route_hf_callback_api_auth_huggingface_callback_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "code",
+            "required": false,
+            "schema": {
+              "default": "",
+              "title": "Code",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "state",
+            "required": false,
+            "schema": {
+              "default": "",
+              "title": "State",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "error",
+            "required": false,
+            "schema": {
+              "default": "",
+              "title": "Error",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "text/html": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "4XX": {
+            "content": {
+              "text/html": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPErrorResponse"
+                }
+              }
+            },
+            "description": "Client Error"
+          },
+          "5XX": {
+            "content": {
+              "text/html": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPErrorResponse"
+                }
+              }
+            },
+            "description": "Server Error"
+          }
+        },
+        "summary": "Route Hf Callback",
+        "tags": [
+          "hf_auth"
+        ]
+      }
+    },
+    "/api/auth/huggingface/login": {
+      "post": {
+        "operationId": "route_hf_login_api_auth_huggingface_login_post",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HuggingFaceLoginResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "4XX": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPErrorResponse"
+                }
+              }
+            },
+            "description": "Client Error"
+          },
+          "5XX": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPErrorResponse"
+                }
+              }
+            },
+            "description": "Server Error"
+          }
+        },
+        "summary": "Route Hf Login",
+        "tags": [
+          "hf_auth"
+        ]
+      }
+    },
+    "/api/auth/huggingface/logout": {
+      "post": {
+        "operationId": "route_hf_logout_api_auth_huggingface_logout_post",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HuggingFaceLogoutResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "4XX": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPErrorResponse"
+                }
+              }
+            },
+            "description": "Client Error"
+          },
+          "5XX": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPErrorResponse"
+                }
+              }
+            },
+            "description": "Server Error"
+          }
+        },
+        "summary": "Route Hf Logout",
+        "tags": [
+          "hf_auth"
+        ]
+      }
+    },
+    "/api/auth/huggingface/status": {
+      "get": {
+        "operationId": "route_hf_auth_status_api_auth_huggingface_status_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HuggingFaceAuthStatusResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "4XX": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPErrorResponse"
+                }
+              }
+            },
+            "description": "Client Error"
+          },
+          "5XX": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPErrorResponse"
+                }
+              }
+            },
+            "description": "Server Error"
+          }
+        },
+        "summary": "Route Hf Auth Status",
+        "tags": [
+          "hf_auth"
+        ]
+      }
+    },
     "/api/generate": {
       "post": {
         "description": "POST /api/generate — video generation from JSON body.",
@@ -1673,15 +1981,35 @@
             },
             "description": "Successful Response"
           },
-          "422": {
+          "402": {
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
+                  "$ref": "#/components/schemas/LtxInsufficientFundsErrorResponse"
                 }
               }
             },
-            "description": "Validation Error"
+            "description": "LTX API credits are insufficient for the requested generation"
+          },
+          "4XX": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPErrorResponse"
+                }
+              }
+            },
+            "description": "Client Error"
+          },
+          "5XX": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPErrorResponse"
+                }
+              }
+            },
+            "description": "Server Error"
           }
         },
         "summary": "Route Generate",
@@ -1723,15 +2051,25 @@
             },
             "description": "Successful Response"
           },
-          "422": {
+          "4XX": {
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
+                  "$ref": "#/components/schemas/HTTPErrorResponse"
                 }
               }
             },
-            "description": "Validation Error"
+            "description": "Client Error"
+          },
+          "5XX": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPErrorResponse"
+                }
+              }
+            },
+            "description": "Server Error"
           }
         },
         "summary": "Route Generate Image",
@@ -1762,9 +2100,71 @@
               }
             },
             "description": "Successful Response"
+          },
+          "4XX": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPErrorResponse"
+                }
+              }
+            },
+            "description": "Client Error"
+          },
+          "5XX": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPErrorResponse"
+                }
+              }
+            },
+            "description": "Server Error"
           }
         },
         "summary": "Route Generate Cancel",
+        "tags": [
+          "generation"
+        ]
+      }
+    },
+    "/api/generate/models-specs": {
+      "get": {
+        "description": "GET /api/generate/models-specs.",
+        "operationId": "route_generate_model_specs_api_generate_models_specs_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/GenerateVideoModelsSpecsResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "4XX": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPErrorResponse"
+                }
+              }
+            },
+            "description": "Client Error"
+          },
+          "5XX": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPErrorResponse"
+                }
+              }
+            },
+            "description": "Server Error"
+          }
+        },
+        "summary": "Route Generate Model Specs",
         "tags": [
           "generation"
         ]
@@ -1784,6 +2184,26 @@
               }
             },
             "description": "Successful Response"
+          },
+          "4XX": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPErrorResponse"
+                }
+              }
+            },
+            "description": "Client Error"
+          },
+          "5XX": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPErrorResponse"
+                }
+              }
+            },
+            "description": "Server Error"
           }
         },
         "summary": "Route Generation Progress",
@@ -1805,6 +2225,26 @@
               }
             },
             "description": "Successful Response"
+          },
+          "4XX": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPErrorResponse"
+                }
+              }
+            },
+            "description": "Client Error"
+          },
+          "5XX": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPErrorResponse"
+                }
+              }
+            },
+            "description": "Server Error"
           }
         },
         "summary": "Route Gpu Info",
@@ -1837,15 +2277,25 @@
             },
             "description": "Successful Response"
           },
-          "422": {
+          "4XX": {
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
+                  "$ref": "#/components/schemas/HTTPErrorResponse"
                 }
               }
             },
-            "description": "Validation Error"
+            "description": "Client Error"
+          },
+          "5XX": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPErrorResponse"
+                }
+              }
+            },
+            "description": "Server Error"
           }
         },
         "summary": "Route Ic Lora Extract",
@@ -1886,15 +2336,25 @@
             },
             "description": "Successful Response"
           },
-          "422": {
+          "4XX": {
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
+                  "$ref": "#/components/schemas/HTTPErrorResponse"
                 }
               }
             },
-            "description": "Validation Error"
+            "description": "Client Error"
+          },
+          "5XX": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPErrorResponse"
+                }
+              }
+            },
+            "description": "Server Error"
           }
         },
         "summary": "Route Ic Lora Generate",
@@ -1903,26 +2363,103 @@
         ]
       }
     },
-    "/api/models": {
-      "get": {
-        "operationId": "route_models_list_api_models_get",
+    "/api/models/check-access": {
+      "post": {
+        "operationId": "route_check_model_access_api_models_check_access_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CheckModelAccessRequest"
+              }
+            }
+          },
+          "required": true
+        },
         "responses": {
           "200": {
             "content": {
               "application/json": {
                 "schema": {
-                  "items": {
-                    "$ref": "#/components/schemas/ModelInfo"
-                  },
-                  "title": "Response Route Models List Api Models Get",
-                  "type": "array"
+                  "$ref": "#/components/schemas/CheckModelAccessResponse"
                 }
               }
             },
             "description": "Successful Response"
+          },
+          "4XX": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPErrorResponse"
+                }
+              }
+            },
+            "description": "Client Error"
+          },
+          "5XX": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPErrorResponse"
+                }
+              }
+            },
+            "description": "Server Error"
           }
         },
-        "summary": "Route Models List",
+        "summary": "Route Check Model Access",
+        "tags": [
+          "models"
+        ]
+      }
+    },
+    "/api/models/delete": {
+      "delete": {
+        "operationId": "route_model_delete_api_models_delete_delete",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ModelDeleteRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/StatusResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "4XX": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPErrorResponse"
+                }
+              }
+            },
+            "description": "Client Error"
+          },
+          "5XX": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPErrorResponse"
+                }
+              }
+            },
+            "description": "Server Error"
+          }
+        },
+        "summary": "Route Model Delete",
         "tags": [
           "models"
         ]
@@ -1952,15 +2489,25 @@
             },
             "description": "Successful Response"
           },
-          "422": {
+          "4XX": {
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
+                  "$ref": "#/components/schemas/HTTPErrorResponse"
                 }
               }
             },
-            "description": "Validation Error"
+            "description": "Client Error"
+          },
+          "5XX": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPErrorResponse"
+                }
+              }
+            },
+            "description": "Server Error"
           }
         },
         "summary": "Route Model Download",
@@ -2005,15 +2552,25 @@
             },
             "description": "Successful Response"
           },
-          "422": {
+          "4XX": {
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
+                  "$ref": "#/components/schemas/HTTPErrorResponse"
                 }
               }
             },
-            "description": "Validation Error"
+            "description": "Client Error"
+          },
+          "5XX": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPErrorResponse"
+                }
+              }
+            },
+            "description": "Server Error"
           }
         },
         "summary": "Route Download Progress",
@@ -2022,65 +2579,176 @@
         ]
       }
     },
-    "/api/models/required-models": {
+    "/api/models/img-gen-recommendation": {
       "get": {
-        "operationId": "route_required_models_api_models_required_models_get",
-        "parameters": [
-          {
-            "in": "query",
-            "name": "skipTextEncoder",
-            "required": false,
-            "schema": {
-              "default": false,
-              "title": "Skiptextencoder",
-              "type": "boolean"
-            }
-          }
-        ],
+        "operationId": "route_img_gen_recommendation_api_models_img_gen_recommendation_get",
         "responses": {
           "200": {
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/RequiredModelsResponse"
+                  "$ref": "#/components/schemas/ImageGenRecommendationResponse"
                 }
               }
             },
             "description": "Successful Response"
           },
-          "422": {
+          "4XX": {
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
+                  "$ref": "#/components/schemas/HTTPErrorResponse"
                 }
               }
             },
-            "description": "Validation Error"
+            "description": "Client Error"
+          },
+          "5XX": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPErrorResponse"
+                }
+              }
+            },
+            "description": "Server Error"
           }
         },
-        "summary": "Route Required Models",
+        "summary": "Route Img Gen Recommendation",
         "tags": [
           "models"
         ]
       }
     },
-    "/api/models/status": {
+    "/api/models/ltx-ic-lora-recommendation": {
       "get": {
-        "operationId": "route_models_status_api_models_status_get",
+        "operationId": "route_ltx_ic_lora_recommendation_api_models_ltx_ic_lora_recommendation_get",
         "responses": {
           "200": {
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/ModelsStatusResponse"
+                  "$ref": "#/components/schemas/LtxIcLoraRecommendationResponse"
                 }
               }
             },
             "description": "Successful Response"
+          },
+          "4XX": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPErrorResponse"
+                }
+              }
+            },
+            "description": "Client Error"
+          },
+          "5XX": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPErrorResponse"
+                }
+              }
+            },
+            "description": "Server Error"
           }
         },
-        "summary": "Route Models Status",
+        "summary": "Route Ltx Ic Lora Recommendation",
+        "tags": [
+          "models"
+        ]
+      }
+    },
+    "/api/models/ltx-recommendation": {
+      "get": {
+        "operationId": "route_ltx_recommendation_api_models_ltx_recommendation_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/LtxDownloadRecommendationResponse"
+                    },
+                    {
+                      "$ref": "#/components/schemas/LtxUpgradeRecommendationResponse"
+                    },
+                    {
+                      "$ref": "#/components/schemas/LtxOkRecommendationResponse"
+                    }
+                  ],
+                  "title": "Response Route Ltx Recommendation Api Models Ltx Recommendation Get"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "4XX": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPErrorResponse"
+                }
+              }
+            },
+            "description": "Client Error"
+          },
+          "5XX": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPErrorResponse"
+                }
+              }
+            },
+            "description": "Server Error"
+          }
+        },
+        "summary": "Route Ltx Recommendation",
+        "tags": [
+          "models"
+        ]
+      }
+    },
+    "/api/models/text-encoder-recommendation": {
+      "get": {
+        "operationId": "route_text_encoder_recommendation_api_models_text_encoder_recommendation_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TextEncoderRecommendationResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "4XX": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPErrorResponse"
+                }
+              }
+            },
+            "description": "Client Error"
+          },
+          "5XX": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPErrorResponse"
+                }
+              }
+            },
+            "description": "Server Error"
+          }
+        },
+        "summary": "Route Text Encoder Recommendation",
         "tags": [
           "models"
         ]
@@ -2121,15 +2789,25 @@
             },
             "description": "Successful Response"
           },
-          "422": {
+          "4XX": {
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
+                  "$ref": "#/components/schemas/HTTPErrorResponse"
                 }
               }
             },
-            "description": "Validation Error"
+            "description": "Client Error"
+          },
+          "5XX": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPErrorResponse"
+                }
+              }
+            },
+            "description": "Server Error"
           }
         },
         "summary": "Route Retake",
@@ -2151,6 +2829,26 @@
               }
             },
             "description": "Successful Response"
+          },
+          "4XX": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPErrorResponse"
+                }
+              }
+            },
+            "description": "Client Error"
+          },
+          "5XX": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPErrorResponse"
+                }
+              }
+            },
+            "description": "Server Error"
           }
         },
         "summary": "Route Runtime Policy",
@@ -2172,6 +2870,26 @@
               }
             },
             "description": "Successful Response"
+          },
+          "4XX": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPErrorResponse"
+                }
+              }
+            },
+            "description": "Client Error"
+          },
+          "5XX": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPErrorResponse"
+                }
+              }
+            },
+            "description": "Server Error"
           }
         },
         "summary": "Route Get Settings",
@@ -2202,15 +2920,25 @@
             },
             "description": "Successful Response"
           },
-          "422": {
+          "4XX": {
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
+                  "$ref": "#/components/schemas/HTTPErrorResponse"
                 }
               }
             },
-            "description": "Validation Error"
+            "description": "Client Error"
+          },
+          "5XX": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPErrorResponse"
+                }
+              }
+            },
+            "description": "Server Error"
           }
         },
         "summary": "Route Post Settings",
@@ -2243,15 +2971,25 @@
             },
             "description": "Successful Response"
           },
-          "422": {
+          "4XX": {
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
+                  "$ref": "#/components/schemas/HTTPErrorResponse"
                 }
               }
             },
-            "description": "Validation Error"
+            "description": "Client Error"
+          },
+          "5XX": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPErrorResponse"
+                }
+              }
+            },
+            "description": "Server Error"
           }
         },
         "summary": "Route Suggest Gap Prompt",
@@ -2277,40 +3015,31 @@
               }
             },
             "description": "Successful Response"
+          },
+          "4XX": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPErrorResponse"
+                }
+              }
+            },
+            "description": "Client Error"
+          },
+          "5XX": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPErrorResponse"
+                }
+              }
+            },
+            "description": "Server Error"
           }
         },
         "summary": "Route Shutdown",
         "tags": [
           "health"
-        ]
-      }
-    },
-    "/api/text-encoder/download": {
-      "post": {
-        "operationId": "route_text_encoder_download_api_text_encoder_download_post",
-        "responses": {
-          "200": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "anyOf": [
-                    {
-                      "$ref": "#/components/schemas/TextEncoderDownloadStartedResponse"
-                    },
-                    {
-                      "$ref": "#/components/schemas/TextEncoderAlreadyDownloadedResponse"
-                    }
-                  ],
-                  "title": "Response Route Text Encoder Download Api Text Encoder Download Post"
-                }
-              }
-            },
-            "description": "Successful Response"
-          }
-        },
-        "summary": "Route Text Encoder Download",
-        "tags": [
-          "models"
         ]
       }
     },
@@ -2327,6 +3056,26 @@
               }
             },
             "description": "Successful Response"
+          },
+          "4XX": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPErrorResponse"
+                }
+              }
+            },
+            "description": "Client Error"
+          },
+          "5XX": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPErrorResponse"
+                }
+              }
+            },
+            "description": "Server Error"
           }
         },
         "summary": "Route Health",

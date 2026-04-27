@@ -1,6 +1,7 @@
 """State handler exports."""
 
 from handlers.download_handler import DownloadHandler
+from handlers.hf_auth_handler import HuggingFaceAuthHandler
 from handlers.generation_handler import GenerationHandler
 from handlers.health_handler import HealthHandler
 from handlers.ic_lora_handler import IcLoraHandler
@@ -28,4 +29,5 @@ __all__ = [
     "RetakeHandler",
     "RuntimePolicyHandler",
     "IcLoraHandler",
+    "HuggingFaceAuthHandler",
 ]

@@ -1,5 +1,5 @@
 import { useEffect, useRef } from 'react'
-import type { TimelineClip } from '../../types/project'
+import type { TimelineClip } from '../../types/project-model'
 import { pathToFileUrl } from '../../lib/file-url'
 import {
   selectAssets,

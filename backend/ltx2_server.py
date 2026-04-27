@@ -22,7 +22,6 @@ if os.environ.get("BACKEND_DEBUG") == "1":
 
 import logging
 from pathlib import Path
-import threading
 
 # Note: expandable_segments is not supported on all platforms
 
@@ -34,6 +33,8 @@ import services.patches.safetensors_loader_fix as _safetensors_loader_fix  # pyr
 del _safetensors_loader_fix
 import services.patches.safetensors_metadata_fix as _safetensors_metadata_fix  # pyright: ignore[reportUnusedImport]  # Remove once safetensors supports read-only mmap
 del _safetensors_metadata_fix
+import services.patches.pinned_pool_fix as _pinned_pool_fix  # pyright: ignore[reportUnusedImport]  # Remove once ltx-core restores bounded pinned pool
+del _pinned_pool_fix
 
 from state.app_settings import AppSettings
 
@@ -110,7 +111,7 @@ if use_sage_attention:
 # Constants & Paths
 # ============================================================
 
-PORT = 0
+from runtime_config.port_constant import PORT
 
 
 def _get_device() -> torch.device:
@@ -159,9 +160,7 @@ DEFAULT_APP_SETTINGS = AppSettings()
 
 from app_factory import DEFAULT_ALLOWED_ORIGINS, create_app
 from state import RuntimeConfig, build_initial_state
-from runtime_config.model_download_specs import DEFAULT_MODEL_DOWNLOAD_SPECS, DEFAULT_REQUIRED_MODEL_TYPES
-from runtime_config.runtime_policy import decide_force_api_generations
-from state.app_state_types import ModelFileType
+from runtime_config.runtime_policy import LocalGenerationMode, decide_local_generation_mode
 from server_utils.model_layout_migration import migrate_legacy_models_layout
 from services.gpu_info.gpu_info_impl import GpuInfoImpl
 
@@ -170,32 +169,29 @@ migrate_legacy_models_layout(APP_DATA_DIR)
 LTX_API_BASE_URL = "https://api.ltx.video"
 
 
-def _resolve_force_api_generations() -> bool:
+def _resolve_local_generations_mode() -> LocalGenerationMode:
     gpu_info = GpuInfoImpl()
     system = platform.system()
     cuda_available = gpu_info.get_cuda_available()
     vram_gb = gpu_info.get_vram_total_gb()
 
     # Server-owned source of truth for mode selection.
-    force_api_generations = decide_force_api_generations(
+    mode = decide_local_generation_mode(
         system=system,
         cuda_available=cuda_available,
         vram_gb=vram_gb,
     )
     logger.info(
-        "Runtime policy force_api_generations=%s (system=%s cuda_available=%s vram_gb=%s)",
-        force_api_generations,
+        "Runtime policy local_generations_mode=%s (system=%s cuda_available=%s vram_gb=%s)",
+        mode,
         system,
         cuda_available,
         vram_gb,
     )
-    return force_api_generations
+    return mode
 
 
-FORCE_API_GENERATIONS = _resolve_force_api_generations()
-REQUIRED_MODEL_TYPES: frozenset[ModelFileType] = (
-    frozenset() if FORCE_API_GENERATIONS else DEFAULT_REQUIRED_MODEL_TYPES
-)
+LOCAL_GENERATIONS_MODE = _resolve_local_generations_mode()
 
 CAMERA_MOTION_PROMPTS = {
     "none": "",
@@ -211,19 +207,23 @@ CAMERA_MOTION_PROMPTS = {
 
 DEFAULT_NEGATIVE_PROMPT = """blurry, out of focus, overexposed, underexposed, low contrast, washed out colors, excessive noise, grainy texture, poor lighting, flickering, motion blur, distorted proportions, unnatural skin tones, deformed facial features, asymmetrical face, missing facial features, extra limbs, disfigured hands, wrong hand count, artifacts around text, inconsistent perspective, camera shake, incorrect depth of field"""
 
+HF_OAUTH_CLIENT_ID = "a8189e14-9246-4f19-bd6a-a307bdcb9276"
+
 runtime_config = RuntimeConfig(
     device=DEVICE,
+    app_data_dir=APP_DATA_DIR,
     default_models_dir=DEFAULT_MODELS_DIR,
-    model_download_specs=DEFAULT_MODEL_DOWNLOAD_SPECS,
-    required_model_types=REQUIRED_MODEL_TYPES,
     outputs_dir=OUTPUTS_DIR,
     settings_file=SETTINGS_FILE,
     ltx_api_base_url=LTX_API_BASE_URL,
-    force_api_generations=FORCE_API_GENERATIONS,
+    local_generations_mode=LOCAL_GENERATIONS_MODE,
     use_sage_attention=use_sage_attention,
     camera_motion_prompts=CAMERA_MOTION_PROMPTS,
     default_negative_prompt=DEFAULT_NEGATIVE_PROMPT,
     dev_mode=os.environ.get("LTX_DEV_MODE") == "1",
+    hf_oauth_client_id=HF_OAUTH_CLIENT_ID,
+    backend_port=int(os.environ.get("LTX_PORT", "") or PORT),
+    hf_gating_enabled=os.environ.get("LTX_HF_GATING_ENABLED") == "1",
 )
 
 handler = build_initial_state(runtime_config, DEFAULT_APP_SETTINGS)
@@ -250,11 +250,6 @@ def precache_model_files(model_dir: Path) -> int:
                 logger.warning("Failed to precache model file: %s", f, exc_info=True)
     return total_bytes
 
-
-def background_warmup() -> None:
-    handler.health.default_warmup()
-
-
 def log_hardware_info() -> None:
     """Log runtime hardware and environment details."""
     gpu = GpuInfoImpl()
@@ -272,14 +267,11 @@ if __name__ == "__main__":
     import asyncio
     import uvicorn
 
-    port = int(os.environ.get("LTX_PORT", "") or PORT)
+    port = runtime_config.backend_port
     logger.info("=" * 60)
     logger.info("LTX-2 Video Generation Server (FastAPI + Uvicorn)")
     log_hardware_info()
     logger.info("=" * 60)
-
-    warmup_thread = threading.Thread(target=background_warmup, daemon=True)
-    warmup_thread.start()
 
     # Use our root logging config so uvicorn logs go to stdout (not its
     # default stderr), letting Electron tag them correctly as INFO.
@@ -299,25 +291,17 @@ if __name__ == "__main__":
         },
     }
 
-    import socket as _socket
-
-    # Bind the socket ourselves so we know the actual port before uvicorn starts.
-    sock = _socket.socket(_socket.AF_INET, _socket.SOCK_STREAM)
-    sock.setsockopt(_socket.SOL_SOCKET, _socket.SO_REUSEADDR, 1)
-    sock.bind(("127.0.0.1", port))
-    actual_port = int(sock.getsockname()[1])
-
-    config = uvicorn.Config(app, host="127.0.0.1", port=actual_port, log_level="info", access_log=False, log_config=log_config)
+    config = uvicorn.Config(app, host="127.0.0.1", port=port, log_level="info", access_log=False, log_config=log_config)
     server = uvicorn.Server(config)
 
     _orig_startup = server.startup
 
-    async def _startup_with_ready_msg(sockets: list[_socket.socket] | None = None) -> None:
-        await _orig_startup(sockets=sockets)
+    async def _startup_with_ready_msg(sockets: object = None) -> None:
+        await _orig_startup(sockets=sockets)  # type: ignore[arg-type]
         if server.started:
             # Machine-parseable ready message — Electron matches this line
-            print(f"Server running on http://127.0.0.1:{actual_port}", flush=True)
+            print(f"Server running on http://127.0.0.1:{port}", flush=True)
 
     server.startup = _startup_with_ready_msg  # type: ignore[assignment]
 
-    asyncio.run(server.serve(sockets=[sock]))
+    asyncio.run(server.serve())

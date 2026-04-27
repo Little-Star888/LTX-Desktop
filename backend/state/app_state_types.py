@@ -3,11 +3,9 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from enum import Enum
-from pathlib import Path
 from typing import TYPE_CHECKING, NewType, Protocol
 
-from api_types import ModelFileType
+from api_types import ModelCheckpointID
 from state.conditioning_cache import ConditioningCache
 
 if TYPE_CHECKING:
@@ -25,15 +23,6 @@ if TYPE_CHECKING:
     import torch
 
 
-# ============================================================
-# Model file availability (disk truth)
-# ============================================================
-
-# Availability and download are orthogonal concerns.
-AvailableFiles = dict[ModelFileType, Path | None]
-
-
-# ============================================================
 # Download session
 # ============================================================
 
@@ -61,7 +50,7 @@ def _default_completed_download_sessions() -> dict[DownloadSessionId, DownloadSe
 
 @dataclass
 class FileDownloadRunning:
-    file_type: ModelFileType
+    file_type: ModelCheckpointID
     target_path: str
     downloaded_bytes: int
     speed_bytes_per_sec: float
@@ -71,8 +60,8 @@ class FileDownloadRunning:
 class DownloadingSession:
     id: DownloadSessionId
     current_running_file: FileDownloadRunning | None
-    files_to_download: set[ModelFileType]
-    completed_files: set[ModelFileType]
+    files_to_download: set[ModelCheckpointID]
+    completed_files: set[ModelCheckpointID]
     completed_bytes: int
 
 
@@ -109,16 +98,9 @@ class TextEncoderState:
 # ============================================================
 
 
-class VideoPipelineWarmth(Enum):
-    COLD = "cold"
-    WARMING = "warming"
-    WARM = "warm"
-
-
 @dataclass
 class VideoPipelineState:
     pipeline: FastVideoPipeline
-    warmth: VideoPipelineWarmth
     is_compiled: bool
 
 
@@ -218,35 +200,29 @@ class CpuSlot:
     active_pipeline: ImageGenerationPipeline
 
 
+# HuggingFace auth
 # ============================================================
-# Startup lifecycle
-# ============================================================
-
-# Internal warmup lifecycle markers consumed by AppHandler.default_warmup().
 
 
-@dataclass
-class StartupPending:
-    message: str
-
-
-@dataclass
-class StartupLoading:
-    current_step: str
-    progress: float
-
-
-@dataclass
-class StartupReady:
+@dataclass(frozen=True)
+class HfNotAuthenticated:
     pass
 
 
-@dataclass
-class StartupError:
-    error: str
+@dataclass(frozen=True)
+class HfOAuthPending:
+    state: str
+    code_verifier: str
+    created_at: float
 
 
-StartupState = StartupPending | StartupLoading | StartupReady | StartupError
+@dataclass(frozen=True)
+class HfAuthenticated:
+    access_token: str
+    expires_at: float
+
+
+HfAuthState = HfNotAuthenticated | HfOAuthPending | HfAuthenticated
 
 
 # ============================================================
@@ -256,14 +232,13 @@ StartupState = StartupPending | StartupLoading | StartupReady | StartupError
 
 @dataclass
 class AppState:
-    available_files: AvailableFiles
     downloading_session: DownloadingSession | None
     gpu_slot: GpuSlot | None
     active_generation: ActiveGeneration | None
     cpu_slot: CpuSlot | None
     text_encoder: TextEncoderState | None
-    startup: StartupState
     app_settings: AppSettings
     completed_download_sessions: dict[DownloadSessionId, DownloadSessionResult] = field(
         default_factory=_default_completed_download_sessions
     )
+    hf_auth_state: HfAuthState = field(default_factory=HfNotAuthenticated)

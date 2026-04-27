@@ -107,8 +107,27 @@ export const electronAPISchemas = {
     input: z.object({}),
     output: z.boolean(),
   },
+  openLtxBillingPage: {
+    input: z.object({}),
+    output: z.boolean(),
+  },
   openFalApiKeyPage: {
     input: z.object({}),
+    output: z.boolean(),
+  },
+  openHuggingFaceRepo: {
+    input: z.object({ repoId: z.string() }),
+    output: z.boolean(),
+  },
+  openHuggingFaceAuth: {
+    input: z.object({
+      clientId: z.string(),
+      redirectUri: z.string(),
+      scope: z.string(),
+      state: z.string(),
+      codeChallenge: z.string(),
+      codeChallengeMethod: z.string(),
+    }),
     output: z.boolean(),
   },
   openParentFolderOfFile: {
@@ -305,4 +324,5 @@ export type ElectronAPI = InvokeAPI & {
   onBackendHealthStatus: (cb: (data: BackendHealthStatus) => void) => (() => void)
   getPathForFile: (file: File) => string
   platform: string
+  hfGatingEnabled: boolean
 }

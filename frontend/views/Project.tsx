@@ -1,11 +1,12 @@
-import { useEffect, useState } from 'react'
+import { useCallback, useEffect, useState } from 'react'
 import { ArrowLeft, Sparkles, Film } from 'lucide-react'
 import { useProjects } from '../contexts/ProjectContext'
+import { useView } from '../contexts/ViewContext'
 import { LtxLogo } from '../components/LtxLogo'
 import { Button } from '../components/ui/button'
 import { GenSpace } from './GenSpace'
 import { VideoEditor } from './VideoEditor'
-import type { ProjectTab } from '../types/project'
+import type { ProjectTab } from '../types/project-model'
 import {
   hasVisualAssetMetadataForMigration,
   runVisualAssetMetadataMigration,
@@ -13,28 +14,37 @@ import {
 
 export function Project() {
   const {
-    currentProject,
-    currentProjectId,
+    activeProject,
     currentTab,
-    setCurrentProject,
+    setProject,
     setCurrentTab,
-    goHome,
     updateAsset,
     pendingRetakeUpdate,
     setPendingRetakeUpdate,
     pendingIcLoraUpdate,
     setPendingIcLoraUpdate,
   } = useProjects()
+  const { goHome } = useView()
   const [assetMetadataMigrationProgress, setAssetMetadataMigrationProgress] = useState({ running: false, total: 0, completed: 0 })
   const [upgradePassProjectId, setUpgradePassProjectId] = useState<string | null>(null)
+  const activeProjectId = activeProject?.id ?? null
+  const activeProjectAssets = activeProject?.assets ?? null
+  const needsAssetMetadataMigration = activeProjectAssets
+    ? hasVisualAssetMetadataForMigration(activeProjectAssets)
+    : false
+
+  const handleSaveActiveProject = useCallback((project: typeof activeProject extends null ? never : NonNullable<typeof activeProject>) => {
+    if (!activeProjectId) return
+    setProject(activeProjectId, project)
+  }, [activeProjectId, setProject])
 
   useEffect(() => {
-    if (!currentProjectId || !currentProject) return
+    if (!activeProjectId || !activeProjectAssets || !needsAssetMetadataMigration) return
 
     let cancelled = false
 
     const runAssetMetadataMigration = async () => {
-      for await (const event of runVisualAssetMetadataMigration(currentProject.assets, window.electronAPI)) {
+      for await (const event of runVisualAssetMetadataMigration(activeProjectAssets, window.electronAPI)) {
         if (cancelled) return
 
         if (event.kind === 'progress') {
@@ -43,11 +53,11 @@ export function Project() {
         }
 
         for (const update of event.updates) {
-          updateAsset(currentProjectId, update.assetId, update.updates)
+          updateAsset(activeProjectId, update.assetId, update.updates)
         }
 
         setAssetMetadataMigrationProgress({ running: false, total: 0, completed: 0 })
-        setUpgradePassProjectId(currentProjectId)
+        setUpgradePassProjectId(activeProjectId)
       }
     }
 
@@ -56,7 +66,7 @@ export function Project() {
     return () => {
       cancelled = true
     }
-  }, [currentProjectId, currentProject?.id, updateAsset])
+  }, [activeProjectAssets, activeProjectId, needsAssetMetadataMigration, updateAsset])
 
   useEffect(() => {
     if (currentTab !== 'video-editor') return
@@ -70,7 +80,7 @@ export function Project() {
     setPendingIcLoraUpdate,
   ])
   
-  if (!currentProject) {
+  if (!activeProject) {
     return (
       <div className="h-screen bg-background flex items-center justify-center">
         <div className="text-center">
@@ -86,7 +96,7 @@ export function Project() {
     { id: 'video-editor', label: 'Video Editor', icon: <Film className="h-4 w-4" /> },
   ]
   const shouldShowAssetMetadataMigrationProgressScreen = assetMetadataMigrationProgress.running
-    || (upgradePassProjectId !== currentProjectId && hasVisualAssetMetadataForMigration(currentProject.assets))
+    || (upgradePassProjectId !== activeProjectId && needsAssetMetadataMigration)
 
   if (shouldShowAssetMetadataMigrationProgressScreen) {
     const progressPct = assetMetadataMigrationProgress.total > 0
@@ -126,7 +136,7 @@ export function Project() {
           <LtxLogo className="h-5 w-auto text-white" />
           
           {/* Project name */}
-          <span className="text-white font-medium">{currentProject.name}</span>
+          <span className="text-white font-medium">{activeProject.name}</span>
         </div>
         
         {/* Center - Tabs */}
@@ -156,9 +166,9 @@ export function Project() {
           <GenSpace />
         ) : (
           <VideoEditor
-            key={currentProject.id}
-            currentProject={currentProject}
-            setCurrentProject={setCurrentProject}
+            key={activeProject.id}
+            currentProject={activeProject}
+            saveProject={handleSaveActiveProject}
             pendingRetakeUpdate={pendingRetakeUpdate}
             pendingIcLoraUpdate={pendingIcLoraUpdate}
           />

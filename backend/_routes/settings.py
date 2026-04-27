@@ -19,7 +19,9 @@ router = APIRouter(prefix="/api", tags=["settings"])
 
 @router.get("/settings", response_model=SettingsResponse)
 def route_get_settings(handler: AppHandler = Depends(get_state_service)) -> SettingsResponse:
-    return to_settings_response(handler.settings.get_settings_snapshot())
+    response = to_settings_response(handler.settings.get_settings_snapshot())
+    response.models_dir = str(handler.settings.models_dir)
+    return response
 
 
 @router.post("/settings", response_model=StatusResponse)

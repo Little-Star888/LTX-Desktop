@@ -13,6 +13,7 @@ class ModelDownloader(Protocol):
         repo_id: str,
         filename: str,
         local_dir: str,
+        token: str | None,
         on_progress: Callable[[int], None] | None = None,
     ) -> Path: ...
 
@@ -20,5 +21,6 @@ class ModelDownloader(Protocol):
         self,
         repo_id: str,
         local_dir: str,
+        token: str | None,
         on_progress: Callable[[int], None] | None = None,
     ) -> Path: ...

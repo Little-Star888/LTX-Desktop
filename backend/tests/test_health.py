@@ -1,6 +1,6 @@
 """Tests for /health and /api/gpu-info endpoints."""
 
-from state.app_state_types import GpuSlot, VideoPipelineState, VideoPipelineWarmth
+from state.app_state_types import GpuSlot, VideoPipelineState
 from tests.fakes.services import FakeFastVideoPipeline
 
 
@@ -8,7 +8,6 @@ def _set_video_pipeline(state):
     state.state.gpu_slot = GpuSlot(
         active_pipeline=VideoPipelineState(
             pipeline=FakeFastVideoPipeline(),
-            warmth=VideoPipelineWarmth.COLD,
             is_compiled=False,
         ),
     )

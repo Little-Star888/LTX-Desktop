@@ -1,4 +1,4 @@
-import React, { useState, useRef, useEffect, useCallback, useMemo } from 'react'
+import React, { useState, useRef, useEffect, useCallback, useLayoutEffect, useMemo } from 'react'
 import {
   ChevronRight,
 } from 'lucide-react'
@@ -7,13 +7,14 @@ import type { PendingIcLoraUpdate, PendingRetakeUpdate } from '../contexts/Proje
 import { useKeyboardShortcuts } from '../contexts/KeyboardShortcutsContext'
 import { useAppSettings } from '../contexts/AppSettingsContext'
 import { useGeneration } from '../hooks/use-generation'
+import { createLocalGenerationError } from '../lib/generation-errors'
 import { logger } from '../lib/logger'
 import { Tooltip } from '../components/ui/tooltip'
 import { Group, Panel, Separator, type PanelImperativeHandle } from 'react-resizable-panels'
 import { ExportModal } from '../components/ExportModal'
 import { MenuBar, type MenuDefinition } from '../components/MenuBar'
 import { ImportTimelineModal } from '../components/ImportTimelineModal'
-import type { Asset, Project, TimelineClip } from '../types/project'
+import type { Asset, Project, TimelineClip } from '../types/project-model'
 import {
   AUTOSAVE_DELAY,
   type EditorLayout,
@@ -79,14 +80,14 @@ import { SubtitleTrackStyleEditor } from './editor/SubtitleTrackStyleEditor'
 
 interface VideoEditorProps {
   currentProject: Project
-  setCurrentProject: (project: Project) => void
+  saveProject: (project: Project) => void
   pendingRetakeUpdate: PendingRetakeUpdate | null
   pendingIcLoraUpdate: PendingIcLoraUpdate | null
 }
 
 interface VideoEditorWithStoreProps {
   currentProject: Project
-  setCurrentProject: (project: Project) => void
+  saveProject: (project: Project) => void
 }
 
 export function VideoEditor(props: VideoEditorProps) {
@@ -107,7 +108,7 @@ export function VideoEditor(props: VideoEditorProps) {
     <EditorStoreProvider store={editorStore}>
       <VideoEditorWithStore
         currentProject={props.currentProject}
-        setCurrentProject={props.setCurrentProject}
+        saveProject={props.saveProject}
       />
     </EditorStoreProvider>
   )
@@ -115,7 +116,7 @@ export function VideoEditor(props: VideoEditorProps) {
 
 function VideoEditorWithStore({
   currentProject,
-  setCurrentProject,
+  saveProject,
 }: VideoEditorWithStoreProps) {
   const { 
     setCurrentTab, setGenSpaceEditImagePath, setGenSpaceEditMode, setGenSpaceAudioPath,
@@ -255,6 +256,20 @@ function VideoEditorWithStore({
   const trackHeadersRef = useRef<HTMLDivElement>(null)
   const rulerScrollRef = useRef<HTMLDivElement>(null)
   const centerOnPlayheadRef = useRef(false) // Flag: center view on playhead after next zoom change
+  const initialPanelDefaultsRef = useRef<{
+    leftPanelWidth: number
+    rightPanelWidth: number
+    timelineHeight: number
+    assetsHeight: number | string
+  } | null>(null)
+  if (!initialPanelDefaultsRef.current) {
+    initialPanelDefaultsRef.current = {
+      leftPanelWidth: layout.leftPanelWidth,
+      rightPanelWidth: layout.rightPanelWidth,
+      timelineHeight: layout.timelineHeight,
+      assetsHeight: layout.assetsHeight > 0 ? layout.assetsHeight : '60%',
+    }
+  }
 
   // --- Performance refs: allow the rAF playback loop to sync video directly ---
   // These mirror React state so the hot loop doesn't depend on re-renders.
@@ -299,6 +314,25 @@ function VideoEditorWithStore({
     saveLayout(nextLayout)
     requestAnimationFrame(() => applyLayoutToPanels(nextLayout))
   }, [actions, applyLayoutToPanels])
+
+  const hasAppliedInitialLayoutRef = useRef(false)
+  useLayoutEffect(() => {
+    if (hasAppliedInitialLayoutRef.current) return
+    hasAppliedInitialLayoutRef.current = true
+    const currentLayout = selectLayout(getEditorState())
+    requestAnimationFrame(() => applyLayoutToPanels(currentLayout))
+  }, [applyLayoutToPanels, getEditorState])
+
+  const prevShowPropertiesPanelRef = useRef(showPropertiesPanel)
+  useEffect(() => {
+    if (showPropertiesPanel && !prevShowPropertiesPanelRef.current) {
+      const currentLayout = selectLayout(getEditorState())
+      requestAnimationFrame(() => {
+        rightPanelResizeRef.current?.resize(currentLayout.rightPanelWidth)
+      })
+    }
+    prevShowPropertiesPanelRef.current = showPropertiesPanel
+  }, [getEditorState, showPropertiesPanel])
 
   const { subtitleFileInputRef, handleImportSrt, handleExportSrt } = useSubtitleImportExport()
   const { handleExportTimelineXml } = useTimelineXmlExport()
@@ -433,20 +467,20 @@ function VideoEditorWithStore({
     }
     if (autoSaveTimerRef.current) clearTimeout(autoSaveTimerRef.current)
     autoSaveTimerRef.current = setTimeout(() => {
-      setCurrentProject(updatedProject(currentProjectRef.current, editorModelRef.current))
+      saveProject(updatedProject(currentProjectRef.current, editorModelRef.current))
     }, AUTOSAVE_DELAY)
 
     return () => {
       if (autoSaveTimerRef.current) clearTimeout(autoSaveTimerRef.current)
     }
-  }, [editorModel, setCurrentProject])
+  }, [editorModel, saveProject])
 
   useEffect(() => {
     return () => {
       if (autoSaveTimerRef.current) clearTimeout(autoSaveTimerRef.current)
-      setCurrentProject(updatedProject(currentProjectRef.current, editorModelRef.current))
+      saveProject(updatedProject(currentProjectRef.current, editorModelRef.current))
     }
-  }, [setCurrentProject])
+  }, [saveProject])
   
   // --- Core timeline logic ---
 
@@ -717,7 +751,7 @@ function VideoEditorWithStore({
           <Panel
             id="editor-left-panel"
             panelRef={leftPanelResizeRef}
-            defaultSize={layout.leftPanelWidth}
+            defaultSize={initialPanelDefaultsRef.current.leftPanelWidth}
             minSize={LAYOUT_LIMITS.leftPanelWidth.min}
             maxSize={LAYOUT_LIMITS.leftPanelWidth.max}
             groupResizeBehavior="preserve-pixel-size"
@@ -730,7 +764,7 @@ function VideoEditorWithStore({
               <Panel
                 id="editor-assets-panel"
                 panelRef={assetsPanelResizeRef}
-                defaultSize={layout.assetsHeight > 0 ? layout.assetsHeight : '60%'}
+                defaultSize={initialPanelDefaultsRef.current.assetsHeight}
                 minSize={LAYOUT_LIMITS.assetsHeight.min}
                 maxSize={LAYOUT_LIMITS.assetsHeight.max}
                 groupResizeBehavior="preserve-pixel-size"
@@ -827,7 +861,7 @@ function VideoEditorWithStore({
         <Panel
           id="editor-timeline-panel"
           panelRef={timelinePanelResizeRef}
-          defaultSize={layout.timelineHeight}
+          defaultSize={initialPanelDefaultsRef.current.timelineHeight}
           minSize={LAYOUT_LIMITS.timelineHeight.min}
           maxSize={LAYOUT_LIMITS.timelineHeight.max}
           groupResizeBehavior="preserve-pixel-size"
@@ -885,7 +919,7 @@ function VideoEditorWithStore({
               <Panel
                 id="editor-properties-panel"
                 panelRef={rightPanelResizeRef}
-                defaultSize={layout.rightPanelWidth}
+                defaultSize={initialPanelDefaultsRef.current.rightPanelWidth}
                 minSize={LAYOUT_LIMITS.rightPanelWidth.min}
                 maxSize={LAYOUT_LIMITS.rightPanelWidth.max}
                 groupResizeBehavior="preserve-pixel-size"
@@ -959,7 +993,7 @@ function VideoEditorWithStore({
 
       {(regenError || regenerationPreError) && (
         <GenerationErrorDialog
-          error={(regenError || regenerationPreError)!}
+          error={(regenError || (regenerationPreError ? createLocalGenerationError(regenerationPreError) : null))!}
           onDismiss={() => {
             if (regenError) regenReset()
             if (regenerationPreError) dismissRegenerationPreError()

@@ -34,7 +34,7 @@ def test_http_400_logs_without_traceback(caplog, client) -> None:
             "prompt": "test",
             "resolution": "540p",
             "model": "fast",
-            "duration": 2,
+            "duration": 5,
             "fps": 24,
             "imagePath": "/no/such/file.png",
         },

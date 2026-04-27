@@ -1,13 +1,13 @@
 import React, {
-  forwardRef, useCallback, useEffect, useImperativeHandle, useRef, useState,
+  forwardRef, useCallback, useEffect, useImperativeHandle, useMemo, useRef, useState,
 } from 'react'
 import {
   FolderPlus, Folder, Upload, ChevronLeft, ChevronDown, ChevronRight, ChevronUp,
   X, RefreshCw, Loader2, Trash2, Music, Layers, Video, Image,
   LayoutGrid, List, ArrowUpDown, Pencil,
 } from 'lucide-react'
-import { useShallow } from 'zustand/react/shallow'
-import type { Asset } from '../../types/project'
+import { shallow } from 'zustand/vanilla/shallow'
+import { createAssetBinId, type Asset } from '../../types/project-model'
 import { VideoThumbnailCard } from './VideoThumbnailCard'
 import { getColorLabel } from './video-editor-utils'
 import { Tooltip } from '../../components/ui/tooltip'
@@ -15,7 +15,7 @@ import { AssetContextMenu } from './AssetContextMenu'
 import { TakeContextMenu } from './TakeContextMenu'
 import { pathToFileUrl } from '../../lib/file-url'
 import type { AssetListFilters } from './editor-state'
-import { selectAssetBins, selectAssets, selectVisibleAssets } from './editor-selectors'
+import { equalAssetBins, selectAssetBins, selectAssets, selectVisibleAssets } from './editor-selectors'
 import { useEditorActions, useEditorStore } from './editor-store'
 
 export interface VideoEditorAssetsPanelHandle {
@@ -50,17 +50,19 @@ export const VideoEditorAssetsPanel = forwardRef<VideoEditorAssetsPanelHandle, V
 
   const [takesViewAssetId, setTakesViewAssetId] = useState<string | null>(null)
   const [creatingBin, setCreatingBin] = useState(false)
+  const [renamingBinId, setRenamingBinId] = useState<string | null>(null)
   const [newBinName, setNewBinName] = useState('')
-  const [selectedBin, setSelectedBin] = useState<string | null>(null)
+  const [selectedBinId, setSelectedBinId] = useState<string | null>(null)
   const [assetFilter, setAssetFilter] = useState<'all' | 'video' | 'image' | 'audio'>('all')
   const [selectedAssetIds, setSelectedAssetIds] = useState<Set<string>>(new Set())
   const [assetLasso, setAssetLasso] = useState<{ startX: number; startY: number; currentX: number; currentY: number } | null>(null)
   const [assetContextMenu, setAssetContextMenu] = useState<{ assetId: string; x: number; y: number } | null>(null)
   const [takeContextMenu, setTakeContextMenu] = useState<{ assetId: string; takeIndex: number; x: number; y: number } | null>(null)
-  const [binContextMenu, setBinContextMenu] = useState<{ bin: string; x: number; y: number } | null>(null)
+  const [binContextMenu, setBinContextMenu] = useState<{ binId: string; x: number; y: number } | null>(null)
   const [assetViewMode, setAssetViewMode] = useState<'grid' | 'list'>('grid')
   const [listSortCol, setListSortCol] = useState<'name' | 'type' | 'duration' | 'resolution' | 'date' | 'color'>('name')
   const [listSortDir, setListSortDir] = useState<'asc' | 'desc'>('asc')
+  const assetLassoActive = assetLasso !== null
 
   const fileInputRef = useRef<HTMLInputElement>(null)
   const assetGridRef = useRef<HTMLDivElement>(null)
@@ -68,15 +70,24 @@ export const VideoEditorAssetsPanel = forwardRef<VideoEditorAssetsPanelHandle, V
   const assetContextMenuRef = useRef<HTMLDivElement>(null)
   const takeContextMenuRef = useRef<HTMLDivElement>(null)
   const binContextMenuRef = useRef<HTMLDivElement>(null)
-  const bins = useEditorStore(useShallow(selectAssetBins))
+  const assetLassoRef = useRef(assetLasso)
+  assetLassoRef.current = assetLasso
+  const assetLassoPointerRef = useRef<{ clientX: number; clientY: number } | null>(null)
+  const assetLassoBaseSelectionRef = useRef<Set<string>>(new Set())
+  const assetLassoAutoScrollFrameRef = useRef<number | null>(null)
+  const bins = useEditorStore(selectAssetBins, equalAssetBins)
+  const binIdToName = useMemo(
+    () => new Map(bins.map(bin => [bin.id, bin.name])),
+    [bins],
+  )
   const assetFilters: AssetListFilters = {
     assetFilter,
-    selectedBin,
+    selectedBinId,
     assetViewMode,
     listSortCol,
     listSortDir,
   }
-  const visibleAssets = useEditorStore(useShallow(state => selectVisibleAssets(state, assetFilters)))
+  const visibleAssets = useEditorStore(state => selectVisibleAssets(state, assetFilters), shallow)
   const filteredAssets = assetViewMode === 'list'
     ? assets.filter(asset => visibleAssets.some(visible => visible.id === asset.id))
     : visibleAssets
@@ -106,7 +117,7 @@ export const VideoEditorAssetsPanel = forwardRef<VideoEditorAssetsPanelHandle, V
     const asset = assets.find(a => a.id === assetId)
     if (!asset) return
     setAssetFilter('all')
-    setSelectedBin(asset.bin ?? null)
+    setSelectedBinId(asset.binId ?? null)
     setTakesViewAssetId(null)
     setSelectedAssetIds(new Set([asset.id]))
     setTimeout(() => {
@@ -139,6 +150,7 @@ export const VideoEditorAssetsPanel = forwardRef<VideoEditorAssetsPanelHandle, V
     prompt: asset.prompt,
     resolution: asset.resolution,
     duration: asset.duration,
+    binId: asset.binId,
     generationParams: asset.generationParams,
     takes: [{
       path: take.path,
@@ -152,6 +164,49 @@ export const VideoEditorAssetsPanel = forwardRef<VideoEditorAssetsPanelHandle, V
     createdAt: Date.now(),
   }), [])
 
+  const openCreateBinEditor = useCallback((assetIds?: string[]) => {
+    if (assetIds) {
+      setSelectedAssetIds(new Set(assetIds))
+    }
+    setRenamingBinId(null)
+    setCreatingBin(true)
+    setNewBinName('')
+  }, [])
+
+  const commitBinEdit = useCallback(() => {
+    const trimmedName = newBinName.trim()
+    if (renamingBinId) {
+      const currentBinName = binIdToName.get(renamingBinId)
+      if (trimmedName && trimmedName !== currentBinName) {
+        actions.renameBin(renamingBinId, trimmedName)
+      }
+      setRenamingBinId(null)
+      setNewBinName('')
+      return
+    }
+
+    if (!trimmedName) {
+      setCreatingBin(false)
+      setNewBinName('')
+      return
+    }
+
+    const existingBin = bins.find(bin => bin.name === trimmedName)
+    const binId = existingBin?.id ?? createAssetBinId()
+
+    if (!existingBin) {
+      actions.createBin(binId, trimmedName)
+    }
+    if (selectedAssetIds.size > 0) {
+      actions.assignAssetsToBin([...selectedAssetIds], binId)
+      setSelectedAssetIds(new Set())
+    }
+
+    setSelectedBinId(binId)
+    setCreatingBin(false)
+    setNewBinName('')
+  }, [actions, binIdToName, bins, newBinName, renamingBinId, selectedAssetIds])
+
   useEffect(() => {
     if (!takesViewAssetId) return
     const takesAsset = assets.find(a => a.id === takesViewAssetId)
@@ -161,9 +216,9 @@ export const VideoEditorAssetsPanel = forwardRef<VideoEditorAssetsPanelHandle, V
   }, [assets, takesViewAssetId])
 
   useEffect(() => {
-    if (!creatingBin) return
+    if (!creatingBin && !renamingBinId) return
     setTimeout(() => newBinInputRef.current?.focus(), 0)
-  }, [creatingBin])
+  }, [creatingBin, renamingBinId])
 
   useEffect(() => {
     if (!assetContextMenu) return
@@ -249,6 +304,107 @@ export const VideoEditorAssetsPanel = forwardRef<VideoEditorAssetsPanelHandle, V
     }
   }
 
+  const updateAssetLassoSelection = useCallback((clientX: number, clientY: number) => {
+    const currentLasso = assetLassoRef.current
+    const container = assetGridRef.current
+    if (!currentLasso || !container) return
+
+    const rect = container.getBoundingClientRect()
+    const scrollTop = container.scrollTop
+    const x = clientX - rect.left
+    const y = clientY - rect.top + scrollTop
+
+    setAssetLasso({
+      ...currentLasso,
+      currentX: x,
+      currentY: y,
+    })
+
+    const lassoLeft = Math.min(currentLasso.startX, x)
+    const lassoRight = Math.max(currentLasso.startX, x)
+    const lassoTop = Math.min(currentLasso.startY, y)
+    const lassoBottom = Math.max(currentLasso.startY, y)
+    const nextSelected = new Set(assetLassoBaseSelectionRef.current)
+    const cards = container.querySelectorAll<HTMLElement>('[data-asset-card]')
+
+    cards.forEach(card => {
+      const cardRect = card.getBoundingClientRect()
+      const cardLeft = cardRect.left - rect.left
+      const cardRight = cardRect.right - rect.left
+      const cardTop = cardRect.top - rect.top + scrollTop
+      const cardBottom = cardRect.bottom - rect.top + scrollTop
+
+      if (cardLeft < lassoRight && cardRight > lassoLeft && cardTop < lassoBottom && cardBottom > lassoTop) {
+        const id = card.dataset.assetId
+        if (id) nextSelected.add(id)
+      }
+    })
+
+    setSelectedAssetIds(nextSelected)
+  }, [])
+
+  const tickAssetLassoAutoScroll = useCallback(() => {
+    assetLassoAutoScrollFrameRef.current = null
+
+    const currentLasso = assetLassoRef.current
+    const pointer = assetLassoPointerRef.current
+    const container = assetGridRef.current
+    if (!currentLasso || !pointer || !container) return
+
+    const rect = container.getBoundingClientRect()
+    const edgeThreshold = 28
+    const maxStep = 18
+    let scrollDelta = 0
+
+    if (pointer.clientY < rect.top + edgeThreshold) {
+      const distance = rect.top + edgeThreshold - pointer.clientY
+      scrollDelta = -Math.min(maxStep, Math.max(4, distance * 0.35))
+    } else if (pointer.clientY > rect.bottom - edgeThreshold) {
+      const distance = pointer.clientY - (rect.bottom - edgeThreshold)
+      scrollDelta = Math.min(maxStep, Math.max(4, distance * 0.35))
+    }
+
+    if (scrollDelta !== 0) {
+      const maxScrollTop = Math.max(0, container.scrollHeight - container.clientHeight)
+      const nextScrollTop = Math.max(0, Math.min(maxScrollTop, container.scrollTop + scrollDelta))
+      if (nextScrollTop !== container.scrollTop) {
+        container.scrollTop = nextScrollTop
+        updateAssetLassoSelection(pointer.clientX, pointer.clientY)
+      }
+    }
+
+    if (assetLassoRef.current) {
+      assetLassoAutoScrollFrameRef.current = requestAnimationFrame(tickAssetLassoAutoScroll)
+    }
+  }, [updateAssetLassoSelection])
+
+  useEffect(() => {
+    if (!assetLassoActive) return
+
+    const handleMouseMove = (event: MouseEvent) => {
+      assetLassoPointerRef.current = { clientX: event.clientX, clientY: event.clientY }
+      updateAssetLassoSelection(event.clientX, event.clientY)
+    }
+
+    const handleMouseUp = () => {
+      setAssetLasso(null)
+      assetLassoPointerRef.current = null
+    }
+
+    window.addEventListener('mousemove', handleMouseMove)
+    window.addEventListener('mouseup', handleMouseUp)
+    assetLassoAutoScrollFrameRef.current = requestAnimationFrame(tickAssetLassoAutoScroll)
+
+    return () => {
+      window.removeEventListener('mousemove', handleMouseMove)
+      window.removeEventListener('mouseup', handleMouseUp)
+      if (assetLassoAutoScrollFrameRef.current !== null) {
+        cancelAnimationFrame(assetLassoAutoScrollFrameRef.current)
+        assetLassoAutoScrollFrameRef.current = null
+      }
+    }
+  }, [assetLassoActive, tickAssetLassoAutoScroll, updateAssetLassoSelection])
+
   return (
     <div className="flex flex-col min-h-0 h-full border-r border-zinc-800">
       <div className="p-4 pb-2 space-y-2 flex-shrink-0">
@@ -259,7 +415,7 @@ export const VideoEditorAssetsPanel = forwardRef<VideoEditorAssetsPanelHandle, V
               <div className="flex items-center gap-1">
                 <Tooltip content="Create bin" side="right">
                   <button
-                    onClick={() => setCreatingBin(true)}
+                    onClick={() => openCreateBinEditor()}
                     className="p-1.5 rounded-lg hover:bg-zinc-800 text-zinc-400 hover:text-white transition-colors"
                   >
                     <FolderPlus className="h-4 w-4" />
@@ -315,9 +471,9 @@ export const VideoEditorAssetsPanel = forwardRef<VideoEditorAssetsPanelHandle, V
             {(bins.length > 0 || creatingBin) && (
               <div className="flex flex-wrap gap-1">
                 <button
-                  onClick={() => setSelectedBin(null)}
+                  onClick={() => setSelectedBinId(null)}
                   className={`px-2 py-0.5 rounded text-[10px] font-medium transition-colors flex items-center gap-1 ${
-                    selectedBin === null
+                    selectedBinId === null
                       ? 'bg-blue-600/30 text-blue-300 border border-blue-500/40'
                       : 'bg-zinc-800 text-zinc-500 hover:text-zinc-300 border border-transparent'
                   }`}
@@ -326,12 +482,12 @@ export const VideoEditorAssetsPanel = forwardRef<VideoEditorAssetsPanelHandle, V
                 </button>
                 {bins.map(bin => (
                   <button
-                    key={bin}
-                    onClick={() => setSelectedBin(selectedBin === bin ? null : bin)}
+                    key={bin.id}
+                    onClick={() => setSelectedBinId(selectedBinId === bin.id ? null : bin.id)}
                     onContextMenu={(e) => {
                       e.preventDefault()
                       e.stopPropagation()
-                      setBinContextMenu({ bin, x: e.clientX, y: e.clientY })
+                      setBinContextMenu({ binId: bin.id, x: e.clientX, y: e.clientY })
                     }}
                     onDragOver={(e) => {
                       e.preventDefault()
@@ -347,30 +503,30 @@ export const VideoEditorAssetsPanel = forwardRef<VideoEditorAssetsPanelHandle, V
                       if (assetIdsJson) {
                         try {
                           const ids: string[] = JSON.parse(assetIdsJson)
-                          actions.assignAssetsToBin(ids, bin)
+                          actions.assignAssetsToBin(ids, bin.id)
                           setSelectedAssetIds(new Set())
                         } catch {
                           // ignore parse errors
                         }
                       } else {
                         const assetId = e.dataTransfer.getData('assetId')
-                        if (assetId) actions.assignAssetsToBin([assetId], bin)
+                        if (assetId) actions.assignAssetsToBin([assetId], bin.id)
                       }
                     }}
                     className={`px-2 py-0.5 rounded text-[10px] font-medium transition-colors flex items-center gap-1 group/bin ${
-                      selectedBin === bin
+                      selectedBinId === bin.id
                         ? 'bg-blue-600/30 text-blue-300 border border-blue-500/40'
                         : 'bg-zinc-800 text-zinc-500 hover:text-zinc-300 border border-transparent'
                     }`}
                   >
                     <Folder className="h-3 w-3" />
-                    {bin}
+                    {bin.name}
                     <span className="text-zinc-600 text-[9px]">
-                      {assets.filter(a => a.bin === bin).length}
+                      {bin.count}
                     </span>
                   </button>
                 ))}
-                {creatingBin && (
+                {(creatingBin || renamingBinId) && (
                   <div className="flex items-center gap-1">
                     <input
                       ref={newBinInputRef}
@@ -378,29 +534,14 @@ export const VideoEditorAssetsPanel = forwardRef<VideoEditorAssetsPanelHandle, V
                       value={newBinName}
                       onChange={(e) => setNewBinName(e.target.value)}
                       onKeyDown={(e) => {
-                        if (e.key === 'Enter' && newBinName.trim()) {
-                          if (selectedAssetIds.size > 0) {
-                            const binName = newBinName.trim()
-                            actions.assignAssetsToBin([...selectedAssetIds], binName)
-                            setSelectedAssetIds(new Set())
-                          }
-                          setCreatingBin(false)
-                          setNewBinName('')
-                        }
+                        if (e.key === 'Enter') commitBinEdit()
                         if (e.key === 'Escape') {
                           setCreatingBin(false)
+                          setRenamingBinId(null)
                           setNewBinName('')
                         }
                       }}
-                      onBlur={() => {
-                        if (newBinName.trim() && selectedAssetIds.size > 0) {
-                          const binName = newBinName.trim()
-                          actions.assignAssetsToBin([...selectedAssetIds], binName)
-                          setSelectedAssetIds(new Set())
-                        }
-                        setCreatingBin(false)
-                        setNewBinName('')
-                      }}
+                      onBlur={commitBinEdit}
                       placeholder="Bin name..."
                       className="w-20 px-1.5 py-0.5 rounded text-[10px] bg-zinc-800 border border-zinc-600 text-white placeholder-zinc-600 focus:outline-none focus:border-blue-500"
                     />
@@ -576,42 +717,18 @@ export const VideoEditorAssetsPanel = forwardRef<VideoEditorAssetsPanelHandle, V
           onMouseDown={(e) => {
             if ((e.target as HTMLElement).closest('[data-asset-card]')) return
             if (e.button !== 0) return
-            const rect = assetGridRef.current?.getBoundingClientRect()
+            const container = assetGridRef.current
+            const rect = container?.getBoundingClientRect()
             if (!rect) return
-            const scrollTop = assetGridRef.current?.scrollTop || 0
+            const additiveSelection = e.ctrlKey || e.metaKey || e.shiftKey
+            const scrollTop = container?.scrollTop || 0
             const x = e.clientX - rect.left
             const y = e.clientY - rect.top + scrollTop
             setAssetLasso({ startX: x, startY: y, currentX: x, currentY: y })
-            if (!e.ctrlKey && !e.metaKey && !e.shiftKey) setSelectedAssetIds(new Set())
+            assetLassoPointerRef.current = { clientX: e.clientX, clientY: e.clientY }
+            assetLassoBaseSelectionRef.current = additiveSelection ? new Set(selectedAssetIds) : new Set()
+            if (!additiveSelection) setSelectedAssetIds(new Set())
           }}
-          onMouseMove={(e) => {
-            if (!assetLasso || !assetGridRef.current) return
-            const rect = assetGridRef.current.getBoundingClientRect()
-            const scrollTop = assetGridRef.current.scrollTop || 0
-            const x = e.clientX - rect.left
-            const y = e.clientY - rect.top + scrollTop
-            setAssetLasso(prev => (prev ? { ...prev, currentX: x, currentY: y } : null))
-            const lassoLeft = Math.min(assetLasso.startX, x)
-            const lassoRight = Math.max(assetLasso.startX, x)
-            const lassoTop = Math.min(assetLasso.startY, y)
-            const lassoBottom = Math.max(assetLasso.startY, y)
-            const newSelected = new Set<string>(e.ctrlKey || e.metaKey || e.shiftKey ? selectedAssetIds : [])
-            const cards = assetGridRef.current.querySelectorAll('[data-asset-card]')
-            cards.forEach(card => {
-              const cardRect = card.getBoundingClientRect()
-              const cardLeft = cardRect.left - rect.left
-              const cardRight = cardRect.right - rect.left
-              const cardTop = cardRect.top - rect.top + scrollTop
-              const cardBottom = cardRect.bottom - rect.top + scrollTop
-              if (cardLeft < lassoRight && cardRight > lassoLeft && cardTop < lassoBottom && cardBottom > lassoTop) {
-                const id = (card as HTMLElement).dataset.assetId
-                if (id) newSelected.add(id)
-              }
-            })
-            setSelectedAssetIds(newSelected)
-          }}
-          onMouseUp={() => setAssetLasso(null)}
-          onMouseLeave={() => setAssetLasso(null)}
         >
           {assetLasso && (() => {
             const left = Math.min(assetLasso.startX, assetLasso.currentX)
@@ -834,10 +951,10 @@ export const VideoEditorAssetsPanel = forwardRef<VideoEditorAssetsPanelHandle, V
                         </Tooltip>
                       </div>
                     )}
-                    {asset.bin && (
+                    {asset.binId && binIdToName.get(asset.binId) && (
                       <div className="absolute top-1.5 left-8 flex items-center gap-0.5 px-1 py-0.5 rounded bg-black/70 text-[9px] text-blue-300 opacity-0 group-hover:opacity-100 transition-opacity z-10">
                         <Folder className="h-2.5 w-2.5" />
-                        {asset.bin}
+                        {binIdToName.get(asset.binId)}
                       </div>
                     )}
                     <div className="absolute bottom-1 left-1 flex items-center gap-1 px-1.5 py-0.5 rounded bg-black/70 text-[10px] text-white">
@@ -1022,6 +1139,7 @@ export const VideoEditorAssetsPanel = forwardRef<VideoEditorAssetsPanelHandle, V
             setSelectedAssetIds={setSelectedAssetIds}
             setAssetContextMenu={setAssetContextMenu}
             createAssetFromTake={createAssetFromTake}
+            openCreateBinEditor={openCreateBinEditor}
           />
         )
       })()}
@@ -1054,11 +1172,10 @@ export const VideoEditorAssetsPanel = forwardRef<VideoEditorAssetsPanelHandle, V
         >
           <button
             onClick={() => {
-              const newName = prompt('Rename bin:', binContextMenu.bin)
-              if (newName?.trim() && newName.trim() !== binContextMenu.bin) {
-                actions.renameBin(binContextMenu.bin, newName.trim())
-                if (selectedBin === binContextMenu.bin) setSelectedBin(newName.trim())
-              }
+              setCreatingBin(false)
+              setRenamingBinId(binContextMenu.binId)
+              setNewBinName(binIdToName.get(binContextMenu.binId) ?? '')
+              setSelectedBinId(binContextMenu.binId)
               setBinContextMenu(null)
             }}
             className="w-full text-left px-3 py-1.5 text-zinc-300 hover:bg-zinc-700 flex items-center gap-3"
@@ -1068,8 +1185,8 @@ export const VideoEditorAssetsPanel = forwardRef<VideoEditorAssetsPanelHandle, V
           </button>
           <button
             onClick={() => {
-              actions.clearBin(binContextMenu.bin)
-              if (selectedBin === binContextMenu.bin) setSelectedBin(null)
+              actions.clearBin(binContextMenu.binId)
+              if (selectedBinId === binContextMenu.binId) setSelectedBinId(null)
               setBinContextMenu(null)
             }}
             className="w-full text-left px-3 py-1.5 text-red-400 hover:bg-zinc-700 flex items-center gap-3"

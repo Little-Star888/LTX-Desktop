@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { useShallow } from 'zustand/react/shallow'
+import { shallow } from 'zustand/vanilla/shallow'
 import {
   Plus, Trash2,
   ZoomIn, ZoomOut, Maximize2,
@@ -18,12 +18,21 @@ import { Button } from '../../components/ui/button'
 import { Tooltip } from '../../components/ui/tooltip'
 import { ClipWaveform } from '../../components/AudioWaveform'
 import type { GenerationSettings } from '../../components/SettingsPanel'
+import { useAppSettings } from '../../contexts/AppSettingsContext'
+import { useVideoGenerationModelSpecs } from '../../hooks/use-video-generation-model-specs'
+import type { GenerationError } from '../../lib/generation-errors'
 import { addVisualAssetToProject } from '../../lib/asset-copy'
 import { GapGenerationModal } from './GapGenerationModal'
 import { ClipContextMenu, type ClipContextMenuState } from './ClipContextMenu'
-import type { TimelineClip, Track, SubtitleClip, Asset, TextOverlayStyle } from '../../types/project'
-import { ApiClient, ApiClientError } from '../../lib/api-client'
+import type { TimelineClip, Track, SubtitleClip, Asset, TextOverlayStyle } from '../../types/project-model'
+import { ApiClient } from '../../lib/api-client'
 import { pathToFileUrl } from '../../lib/file-url'
+import {
+  areVideoGenerationSettingsEquivalent,
+  getVideoGenerationModelSpecs,
+  resolveVideoGenerationOptions,
+  sanitizeVideoGenerationSettings,
+} from '../../lib/video-generation-model-specs'
 import {
   PRIMARY_TOOLS, TRIM_TOOLS,
   CUT_POINT_TOLERANCE, DEFAULT_DISSOLVE_DURATION,
@@ -93,7 +102,7 @@ interface GapGenerationApi {
   statusMessage: string
   cancel: () => void
   reset: () => void
-  error: string | null
+  error: GenerationError | null
 }
 
 export interface VideoEditorTimelineEditingPanelProps {
@@ -171,6 +180,12 @@ export function VideoEditorTimelineEditingPanel(props: VideoEditorTimelineEditin
     regenProgress,
   } = props
   const actions = useEditorActions()
+  const { shouldVideoGenerateWithLtxApi } = useAppSettings()
+  const {
+    modelSpecs: videoGenerationModelSpecsResponse,
+    isLoading: isLoadingVideoGenerationModelSpecs,
+    errorMessage: videoGenerationModelSpecsErrorMessage,
+  } = useVideoGenerationModelSpecs()
 
   const assets = useEditorStore(selectAssets)
   const timelines = useEditorStore(selectTimelines)
@@ -192,7 +207,7 @@ export function VideoEditorTimelineEditingPanel(props: VideoEditorTimelineEditin
   const snapEnabled = useEditorStore(selectSnapEnabled)
   const showPropertiesPanel = useEditorStore(selectShowPropertiesPanel)
   const openTimelineIds = useEditorStore(selectOpenTimelineIds)
-  const { renamingTimelineId, renameValue, renameSource } = useEditorStore(useShallow(selectTimelineRenameState))
+  const { renamingTimelineId, renameValue, renameSource } = useEditorStore(selectTimelineRenameState, shallow)
   const subtitleTrackStyleIdx = useEditorStore(selectSubtitleTrackStyleIdx)
   const selectedSubtitleId = useEditorStore(selectSelectedSubtitleId)
   const editingSubtitleId = useEditorStore(selectEditingSubtitleId)
@@ -393,6 +408,7 @@ export function VideoEditorTimelineEditingPanel(props: VideoEditorTimelineEditin
   const [videoTrackHeight, setVideoTrackHeight] = useState(56)
   const [audioTrackHeight, setAudioTrackHeight] = useState(56)
   const [subtitleTrackHeight, setSubtitleTrackHeight] = useState(40)
+  const suppressGapClickRef = useRef(false)
   const [selectedGapAnchor, setSelectedGapAnchor] = useState<GapAnchor>(null)
   const [selectedGap, setSelectedGap] = useState<GapSelection>(null)
   const [gapGenerateMode, setGapGenerateMode] = useState<GapGenerateMode | null>(null)
@@ -426,6 +442,35 @@ export function VideoEditorTimelineEditingPanel(props: VideoEditorTimelineEditin
   const [gapSuggestionNoApiKey, setGapSuggestionNoApiKey] = useState(false)
   const [gapBeforeFrame, setGapBeforeFrame] = useState<string | null>(null)
   const [gapAfterFrame, setGapAfterFrame] = useState<string | null>(null)
+  const gapDuration = selectedGap ? selectedGap.endTime - selectedGap.startTime : null
+  const gapVideoModelSpecs = getVideoGenerationModelSpecs(videoGenerationModelSpecsResponse, {
+    useApiSpecs: shouldVideoGenerateWithLtxApi,
+  })
+  const gapResolvedVideoOptions = (
+    gapGenerateMode === 'text-to-image'
+    || gapDuration === null
+    || gapVideoModelSpecs.length === 0
+  )
+    ? null
+    : resolveVideoGenerationOptions({
+        settings: gapSettings,
+        modelSpecs: gapVideoModelSpecs,
+        minimumDuration: gapDuration,
+        durationSelection: 'smallest_valid',
+      })
+  const gapCanGenerateVideo = Boolean(
+    gapResolvedVideoOptions
+    && gapResolvedVideoOptions.hasCompatibleOptions
+    && !isLoadingVideoGenerationModelSpecs
+    && !videoGenerationModelSpecsErrorMessage
+  )
+  const gapVideoSettingsMessage = isLoadingVideoGenerationModelSpecs
+    ? 'Loading generation settings...'
+    : videoGenerationModelSpecsErrorMessage
+      ? `Could not load generation settings: ${videoGenerationModelSpecsErrorMessage}`
+      : gapGenerateMode !== 'text-to-image' && selectedGap && !gapCanGenerateVideo
+        ? 'This gap is too long to fill with a single video generation.'
+        : null
 
   const selectedGapRef = useRef<GapSelection>(selectedGap)
   selectedGapRef.current = selectedGap
@@ -542,6 +587,15 @@ export function VideoEditorTimelineEditingPanel(props: VideoEditorTimelineEditin
   }, [])
   clearSelectedGapRefBridge.current = clearSelectedGap
 
+  const selectGap = useCallback((gap: NonNullable<GapSelection>, target: HTMLElement) => {
+    setSelectedGap(gap)
+    setSelectedClipIds(new Set())
+    setSelectedSubtitleId(null)
+    setGapGenerateMode(null)
+    const rect = target.getBoundingClientRect()
+    setSelectedGapAnchor({ x: rect.left + rect.width / 2, gapTop: rect.top, gapBottom: rect.bottom })
+  }, [setSelectedClipIds, setSelectedSubtitleId])
+
   const closeSelectedGap = useCallback(() => {
     const gap = selectedGapRef.current
     if (!gap) return
@@ -561,6 +615,20 @@ export function VideoEditorTimelineEditingPanel(props: VideoEditorTimelineEditin
       setSelectedGapAnchor(null)
     }
   }, [selectedGap])
+
+  useEffect(() => {
+    if (gapGenerateMode === 'text-to-image' || gapDuration === null || gapVideoModelSpecs.length === 0) return
+    setGapSettings((prev) => {
+      const next = sanitizeVideoGenerationSettings(prev, gapVideoModelSpecs, {
+        minimumDuration: gapDuration,
+        durationSelection: 'smallest_valid',
+      })
+      if (!next || areVideoGenerationSettingsEquivalent(prev, next)) {
+        return prev
+      }
+      return next
+    })
+  }, [gapDuration, gapGenerateMode, gapVideoModelSpecs])
 
   const timelineGaps = useMemo(() => {
     const gaps: Array<{ trackIndex: number; startTime: number; endTime: number }> = []
@@ -692,7 +760,7 @@ export function VideoEditorTimelineEditingPanel(props: VideoEditorTimelineEditin
         }
       }
 
-      const data = await ApiClient.suggestGapPrompt({
+      const result = await ApiClient.suggestGapPrompt({
         gapDuration: gap.endTime - gap.startTime,
         mode,
         beforePrompt,
@@ -703,9 +771,24 @@ export function VideoEditorTimelineEditingPanel(props: VideoEditorTimelineEditin
       }, {
         signal: abortController.signal,
       })
+      if (!result.ok) {
+        const isApiKeyError = result.status === 401 || result.status === 403
+          || JSON.stringify(result.error).toLowerCase().includes('api_key')
+          || JSON.stringify(result.error).toLowerCase().includes('gemini')
+          || JSON.stringify(result.error).toLowerCase().includes('no api key')
+          || JSON.stringify(result.error).toLowerCase().includes('api key')
+        if (isApiKeyError) {
+          setGapSuggestionNoApiKey(true)
+        } else {
+          console.warn('Gap prompt suggestion failed:', result.error.message)
+          setGapSuggestionError(true)
+        }
+        return
+      }
 
       if (abortController.signal.aborted) return
 
+      const data = result.data
       if (data.suggested_prompt) {
         setGapSuggestion(data.suggested_prompt)
         if (forceReplace || !gapPromptRef.current.trim()) {
@@ -714,20 +797,8 @@ export function VideoEditorTimelineEditingPanel(props: VideoEditorTimelineEditin
       }
     } catch (err) {
       if (err instanceof Error && err.name === 'AbortError') return
-      let isApiKeyError = false
-      if (err instanceof ApiClientError) {
-        isApiKeyError = err.status === 401 || err.status === 403
-        const errStr = JSON.stringify(err.payload ?? '').toLowerCase()
-        if (errStr.includes('api_key') || errStr.includes('gemini') || errStr.includes('no api key') || errStr.includes('api key')) {
-          isApiKeyError = true
-        }
-      }
-      if (isApiKeyError) {
-        setGapSuggestionNoApiKey(true)
-      } else {
-        console.warn('Gap prompt suggestion failed:', err)
-        setGapSuggestionError(true)
-      }
+      console.warn('Gap prompt suggestion failed:', err)
+      setGapSuggestionError(true)
     } finally {
       if (!abortController.signal.aborted) {
         setGapSuggesting(false)
@@ -784,12 +855,14 @@ export function VideoEditorTimelineEditingPanel(props: VideoEditorTimelineEditin
 
     const gap = selectedGap
     const mode = gapGenerateMode
-    const gapDuration = gap.endTime - gap.startTime
     const finalPrompt = gapPrompt.trim()
-    const settings: GenerationSettings = {
-      ...gapSettings,
-      duration: Math.min(Math.max(1, Math.round(gapDuration)), gapSettings.model === 'pro' ? 10 : 20),
-    }
+    const settings = mode === 'text-to-image'
+      ? gapSettings
+      : sanitizeVideoGenerationSettings(gapSettings, gapVideoModelSpecs, {
+          minimumDuration: gap.endTime - gap.startTime,
+          durationSelection: 'smallest_valid',
+        })
+    if (!settings) return
 
     setGeneratingGap({
       trackIndex: gap.trackIndex,
@@ -837,6 +910,7 @@ export function VideoEditorTimelineEditingPanel(props: VideoEditorTimelineEditin
     gapImageFile,
     gapPrompt,
     gapSettings,
+    gapVideoModelSpecs,
     selectedGap,
   ])
 
@@ -859,7 +933,6 @@ export function VideoEditorTimelineEditingPanel(props: VideoEditorTimelineEditin
         startTime: generatingGap.startTime,
         endTime: generatingGap.endTime,
       }
-      const gapDuration = gap.endTime - gap.startTime
       const assetType = isImageResult ? 'image' : 'video'
       const copied = await addVisualAssetToProject(sourcePath, currentProjectId, assetType)
       if (copied) {
@@ -873,12 +946,12 @@ export function VideoEditorTimelineEditingPanel(props: VideoEditorTimelineEditin
           height: copied.height,
           prompt: generatingGap.prompt,
           resolution: isImageResult ? generatingGap.settings.imageResolution : generatingGap.settings.videoResolution,
-          duration: assetType === 'video' ? gapDuration : undefined,
+          duration: assetType === 'video' ? generatingGap.settings.duration : undefined,
           generationParams: {
             mode: generatingGap.mode,
             prompt: generatingGap.prompt,
             model: generatingGap.settings.model,
-            duration: Math.min(Math.max(1, Math.round(gapDuration)), generatingGap.settings.model === 'pro' ? 10 : 20),
+            duration: generatingGap.settings.duration,
             resolution: isImageResult ? generatingGap.settings.imageResolution : generatingGap.settings.videoResolution,
             fps: generatingGap.settings.fps,
             audio: generatingGap.settings.audio,
@@ -1031,6 +1104,29 @@ export function VideoEditorTimelineEditingPanel(props: VideoEditorTimelineEditin
     splitClipAtPlayhead, setSelectedSubtitleId, setSelectedGap,
     audioTrackHeight, videoTrackHeight, subtitleTrackHeight,
   })
+
+  const startSelectionLasso = useCallback((clientX: number, clientY: number, shiftKey: boolean) => {
+    setSelectedSubtitleId(null)
+    setEditingSubtitleId(null)
+    clearSelectedGap()
+    if (!shiftKey) {
+      setSelectedClipIds(new Set())
+    }
+    const container = trackContainerRef.current
+    if (!container) return
+    const rect = container.getBoundingClientRect()
+    lassoOriginRef.current = {
+      scrollLeft: container.scrollLeft,
+      containerLeft: rect.left,
+      containerTop: rect.top,
+    }
+    setLassoRect({
+      startX: clientX,
+      startY: clientY,
+      currentX: clientX,
+      currentY: clientY,
+    })
+  }, [clearSelectedGap, lassoOriginRef, setEditingSubtitleId, setLassoRect, setSelectedClipIds, setSelectedSubtitleId])
 
   const handleClipContextMenu = (e: React.MouseEvent, clip: TimelineClip) => {
     e.preventDefault()
@@ -2060,6 +2156,11 @@ export function VideoEditorTimelineEditingPanel(props: VideoEditorTimelineEditin
                           const onUp = () => {
                             window.removeEventListener('mousemove', onMove)
                             window.removeEventListener('mouseup', onUp)
+                            if (suppressGapClickRef.current) {
+                              window.setTimeout(() => {
+                                suppressGapClickRef.current = false
+                              }, 0)
+                            }
                           }
                           window.addEventListener('mousemove', onMove)
                           window.addEventListener('mouseup', onUp)
@@ -2133,10 +2234,10 @@ export function VideoEditorTimelineEditingPanel(props: VideoEditorTimelineEditin
                   onMouseDown={(e) => {
                     // Only start lasso on direct click on the tracks area (not on clips)
                     if (e.target === e.currentTarget || (e.target as HTMLElement).closest('[data-track-bg]')) {
-                      setSelectedSubtitleId(null)
-                      setEditingSubtitleId(null)
-                      clearSelectedGap()
                       if (activeTool === 'trackForward') {
+                        setSelectedSubtitleId(null)
+                        setEditingSubtitleId(null)
+                        clearSelectedGap()
                         // Track Select Forward: click empty area → select all clips from click time forward
                         const container = trackContainerRef.current
                         if (container) {
@@ -2170,26 +2271,7 @@ export function VideoEditorTimelineEditingPanel(props: VideoEditorTimelineEditin
                           setSelectedClipIds(new Set(forwardClips.map(c => c.id)))
                         }
                       } else if (activeTool === 'select') {
-                        // If not shift-clicking, clear selection first
-                        if (!e.shiftKey) {
-                          setSelectedClipIds(new Set())
-                        }
-                        // Start lasso
-                        const container = trackContainerRef.current
-                        if (container) {
-                          const rect = container.getBoundingClientRect()
-                          lassoOriginRef.current = {
-                            scrollLeft: container.scrollLeft,
-                            containerLeft: rect.left,
-                            containerTop: rect.top, // ruler is now outside trackContainerRef
-                          }
-                          setLassoRect({
-                            startX: e.clientX,
-                            startY: e.clientY,
-                            currentX: e.clientX,
-                            currentY: e.clientY,
-                          })
-                        }
+                        startSelectionLasso(e.clientX, e.clientY, e.shiftKey)
                       }
                     }
                   }}
@@ -2637,25 +2719,41 @@ export function VideoEditorTimelineEditingPanel(props: VideoEditorTimelineEditin
                           width: `${widthPx}px`,
                           height: `${getTrackHeight(gap.trackIndex) - 8}px`,
                         }}
+                        onMouseDown={(e) => {
+                          if (e.button !== 0 || activeTool !== 'select' || isGeneratingHere) return
+                          startSelectionLasso(e.clientX, e.clientY, e.shiftKey)
+                          suppressGapClickRef.current = false
+                          const startX = e.clientX
+                          const startY = e.clientY
+                          const onMove = (event: MouseEvent) => {
+                            if (
+                              Math.abs(event.clientX - startX) >= 4 ||
+                              Math.abs(event.clientY - startY) >= 4
+                            ) {
+                              suppressGapClickRef.current = true
+                            }
+                          }
+                          const onUp = () => {
+                            window.removeEventListener('mousemove', onMove)
+                            window.removeEventListener('mouseup', onUp)
+                          }
+                          window.addEventListener('mousemove', onMove)
+                          window.addEventListener('mouseup', onUp)
+                        }}
                         onClick={(e) => {
                           e.stopPropagation()
+                          if (suppressGapClickRef.current) {
+                            suppressGapClickRef.current = false
+                            return
+                          }
                           if (isGeneratingHere) return
-                          setSelectedGap(gap)
-                          setSelectedClipIds(new Set())
-                          setSelectedSubtitleId(null)
-                          setGapGenerateMode(null)
-                          const r = (e.currentTarget as HTMLElement).getBoundingClientRect()
-                          setSelectedGapAnchor({ x: r.left + r.width / 2, gapTop: r.top, gapBottom: r.bottom })
+                          selectGap(gap, e.currentTarget as HTMLElement)
                         }}
                         onContextMenu={(e) => {
                           e.preventDefault()
                           e.stopPropagation()
                           if (isGeneratingHere) return
-                          setSelectedGap(gap)
-                          setSelectedClipIds(new Set())
-                          setSelectedSubtitleId(null)
-                          const r = (e.currentTarget as HTMLElement).getBoundingClientRect()
-                          setSelectedGapAnchor({ x: r.left + r.width / 2, gapTop: r.top, gapBottom: r.bottom })
+                          selectGap(gap, e.currentTarget as HTMLElement)
                         }}
                       >
                         {isGeneratingHere ? (
@@ -3183,6 +3281,9 @@ export function VideoEditorTimelineEditingPanel(props: VideoEditorTimelineEditin
           gapAfterFrame={gapAfterFrame}
           gapSettings={gapSettings}
           setGapSettings={setGapSettings}
+          gapVideoModelSpecs={gapVideoModelSpecs}
+          gapVideoSettingsMessage={gapVideoSettingsMessage}
+          gapCanGenerateVideo={gapCanGenerateVideo}
           gapImageFile={gapImageFile}
           setGapImageFile={setGapImageFile}
           gapImageInputRef={gapImageInputRef}

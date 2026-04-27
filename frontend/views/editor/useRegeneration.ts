@@ -1,11 +1,10 @@
 import { useCallback, useEffect } from 'react'
-import type { Asset } from '../../types/project'
+import type { Asset, TimelineClip } from '../../types/project-model'
 import type { GenerationSettings } from '../../components/SettingsPanel'
+import type { GenerationError } from '../../lib/generation-errors'
 import { addVisualAssetToProject } from '../../lib/asset-copy'
 import { ApiClient } from '../../lib/api-client'
-import { sanitizeForcedApiVideoSettings } from '../../lib/api-video-options'
 import { logger } from '../../lib/logger'
-import type { TimelineClip } from '../../types/project'
 import {
   selectAssets,
   selectClips,
@@ -85,7 +84,7 @@ export interface UseRegenerationParams {
   isRegenerating: boolean
   regenCancel: () => void
   regenReset: () => void
-  regenError: string | null
+  regenError: GenerationError | null
   shouldVideoGenerateWithLtxApi: boolean
 }
 
@@ -100,7 +99,6 @@ export function useRegeneration(params: UseRegenerationParams) {
     regenCancel,
     regenReset,
     regenError,
-    shouldVideoGenerateWithLtxApi,
   } = params
   const {
     applyGeneratedTake,
@@ -146,7 +144,7 @@ export function useRegeneration(params: UseRegenerationParams) {
         }
 
         if (framePath) {
-          const promptSuggestion = await ApiClient.suggestGapPrompt({
+          const result = await ApiClient.suggestGapPrompt({
             gapDuration: asset.duration || 5,
             mode: asset.type === 'image' ? 'text-to-image' : 'text-to-video',
             beforePrompt: '',
@@ -154,7 +152,11 @@ export function useRegeneration(params: UseRegenerationParams) {
             beforeFrame: framePath,
             afterFrame: '',
           })
+          if (!result.ok) {
+            throw new Error(result.error.message)
+          }
 
+          const promptSuggestion = result.data
           if (promptSuggestion.suggested_prompt) {
             generationParams = {
               mode: asset.type === 'image' ? 'text-to-image' : 'text-to-video',
@@ -227,10 +229,7 @@ export function useRegeneration(params: UseRegenerationParams) {
       imageAspectRatio: generationParams.imageAspectRatio || '16:9',
       imageSteps: generationParams.imageSteps || 4,
     }
-    const videoSettings = shouldVideoGenerateWithLtxApi
-      ? sanitizeForcedApiVideoSettings(rawVideoSettings)
-      : rawVideoSettings
-    void regenGenerate(generationParams.prompt, imagePath, videoSettings)
+    void regenGenerate(generationParams.prompt, imagePath, rawVideoSettings)
   }, [
     isRegenerating,
     projectId,
@@ -238,7 +237,6 @@ export function useRegeneration(params: UseRegenerationParams) {
     regenGenerateImage,
     startClipRegeneration,
     failClipRegeneration,
-    shouldVideoGenerateWithLtxApi,
     assets,
     clips,
     updateAsset,

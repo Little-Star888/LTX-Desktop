@@ -17,6 +17,7 @@ class RetakePipeline(Protocol):
         checkpoint_path: str,
         gemma_root: str | None,
         device: "torch.device",
+        streaming_prefetch_count: int | None,
         *,
         loras: list["LoraPathStrengthAndSDOps"] | None = None,
         quantization: "QuantizationPolicy | None" = None,

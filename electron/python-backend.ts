@@ -4,6 +4,7 @@ import fs from 'fs'
 import path from 'path'
 import { getAppDataDir } from './app-paths'
 import { getCurrentDir, isDev } from './config'
+import { HF_GATING_ENABLED } from '../shared/feature-flags'
 import { logger, writeLog } from './logger'
 import { getCurrentLogFilename } from './logging-management'
 import { getPythonDir } from './python-setup'
@@ -15,6 +16,16 @@ let lastCrashTime = 0
 const CRASH_DEBOUNCE_MS = 10_000
 let startPromise: Promise<void> | null = null
 let takeoverInFlight: Promise<void> | null = null
+
+// HTTP liveness monitoring: once the backend has answered /health after
+// startup, poll it periodically. On sustained failure, SIGTERM the process so
+// the exit handler runs the normal restart/dead flow.
+const STARTUP_PROBE_TIMEOUT_MS = 30_000
+const STARTUP_PROBE_INTERVAL_MS = 500
+const LIVENESS_POLL_INTERVAL_MS = 10_000
+const LIVENESS_FAILURE_THRESHOLD = 3
+let livenessMonitorTimer: NodeJS.Timeout | null = null
+let livenessFailureCount = 0
 
 let backendUrl: string | null = null
 let authToken: string | null = null
@@ -110,6 +121,41 @@ async function waitUntilBackendDown(timeoutMs = 8000): Promise<boolean> {
     await new Promise((resolve) => setTimeout(resolve, 250))
   }
   return false
+}
+
+function stopLivenessMonitor(): void {
+  if (livenessMonitorTimer) {
+    clearInterval(livenessMonitorTimer)
+    livenessMonitorTimer = null
+  }
+  livenessFailureCount = 0
+}
+
+function startLivenessMonitor(): void {
+  stopLivenessMonitor()
+  livenessMonitorTimer = setInterval(() => {
+    void (async () => {
+      if (!pythonProcess || backendOwnership !== 'managed' || isIntentionalShutdown) {
+        return
+      }
+      const healthy = await probeBackendHealth(2000)
+      if (healthy) {
+        livenessFailureCount = 0
+        return
+      }
+      livenessFailureCount += 1
+      logger.warn(`Backend liveness probe failed (${livenessFailureCount}/${LIVENESS_FAILURE_THRESHOLD})`)
+      if (livenessFailureCount >= LIVENESS_FAILURE_THRESHOLD) {
+        logger.error('Backend liveness probe failed repeatedly — killing process to trigger restart')
+        stopLivenessMonitor()
+        try {
+          pythonProcess?.kill('SIGTERM')
+        } catch {
+          // Process may already be dead; exit handler will run.
+        }
+      }
+    })()
+  }, LIVENESS_POLL_INTERVAL_MS)
 }
 
 function startOwnershipTakeover(): void {
@@ -252,6 +298,7 @@ export async function startPythonBackend(): Promise<void> {
         LTX_LOG_FILE: getCurrentLogFilename(),
         LTX_APP_DATA_DIR: getAppDataDir(),
         LTX_DEV_MODE: isDev ? '1' : '0',
+        LTX_HF_GATING_ENABLED: HF_GATING_ENABLED ? '1' : '0',
         PYTORCH_ENABLE_MPS_FALLBACK: '1',
         // Set PYTHONHOME for bundled Python on macOS so it finds its stdlib
         ...(!isDev && process.platform !== 'win32' ? {
@@ -264,6 +311,7 @@ export async function startPythonBackend(): Promise<void> {
     let started = false
     let startupSettled = false
     let sawPortConflict = false
+    let probeGateStarted = false
 
     const settleResolve = () => {
       if (startupSettled) return
@@ -277,27 +325,49 @@ export async function startPythonBackend(): Promise<void> {
       reject(error)
     }
 
+    const gateAliveOnProbe = async () => {
+      const deadline = Date.now() + STARTUP_PROBE_TIMEOUT_MS
+      while (Date.now() < deadline) {
+        if (!pythonProcess || isIntentionalShutdown) {
+          return
+        }
+        if (await probeBackendHealth(1500)) {
+          started = true
+          backendOwnership = 'managed'
+          publishBackendHealthStatus({ status: 'alive' })
+          settleResolve()
+          startLivenessMonitor()
+          return
+        }
+        await new Promise((resolveSleep) => setTimeout(resolveSleep, STARTUP_PROBE_INTERVAL_MS))
+      }
+      logger.error('Backend HTTP probe never succeeded after ready signal — killing process')
+      try {
+        pythonProcess?.kill('SIGTERM')
+      } catch {
+        // Exit handler will run and fail startup with dead.
+      }
+    }
+
     const checkStarted = (output: string) => {
       if (isPortConflictOutput(output)) {
         sawPortConflict = true
       }
 
-      // Check if server has started — parse URL from ready message
-      if (!started) {
-        const readyMatch = output.match(/Server running on (http:\/\/\S+)/)
-        if (readyMatch) {
-          backendUrl = readyMatch[1]
-          started = true
-          backendOwnership = 'managed'
-          publishBackendHealthStatus({ status: 'alive' })
-          settleResolve()
-        } else if (output.includes('Uvicorn running')) {
-          // Fallback for legacy/dev uvicorn output
-          started = true
-          backendOwnership = 'managed'
-          publishBackendHealthStatus({ status: 'alive' })
-          settleResolve()
-        }
+      if (started || probeGateStarted) return
+
+      const readyMatch = output.match(/Server running on (http:\/\/\S+)/)
+      if (readyMatch) {
+        backendUrl = readyMatch[1]
+        probeGateStarted = true
+        void gateAliveOnProbe()
+      } else if (output.includes('Uvicorn running')) {
+        // Fallback for legacy/dev uvicorn output — no parseable URL, so we
+        // can't HTTP-probe. Publish alive on the log signal alone.
+        started = true
+        backendOwnership = 'managed'
+        publishBackendHealthStatus({ status: 'alive' })
+        settleResolve()
       }
     }
 
@@ -332,6 +402,7 @@ export async function startPythonBackend(): Promise<void> {
 
     pythonProcess.on('exit', async (code) => {
       logger.info(`Python backend exited with code ${code}`)
+      stopLivenessMonitor()
       pythonProcess = null
       backendUrl = null
       authToken = null
@@ -413,6 +484,7 @@ export async function startPythonBackend(): Promise<void> {
 export function stopPythonBackend(): void {
   if (pythonProcess) {
     isIntentionalShutdown = true
+    stopLivenessMonitor()
     logger.info('Stopping Python backend...')
     const pid = pythonProcess.pid
     pythonProcess.kill('SIGTERM')

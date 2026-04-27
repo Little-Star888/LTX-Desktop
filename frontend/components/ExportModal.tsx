@@ -1,8 +1,8 @@
 import { useState, useRef, useCallback, useEffect, useMemo } from 'react'
 import { X, Download, FolderOpen, Film, Package, Loader2, Check, AlertCircle, ChevronDown } from 'lucide-react'
 import { Button } from './ui/button'
-import { DEFAULT_SUBTITLE_STYLE } from '../types/project'
-import type { Track, TimelineClip } from '../types/project'
+import { DEFAULT_SUBTITLE_STYLE } from '../types/project-model'
+import type { Track, TimelineClip } from '../types/project-model'
 import {
   selectActiveTimeline,
   selectAssets,

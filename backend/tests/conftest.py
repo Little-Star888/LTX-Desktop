@@ -6,12 +6,22 @@ from io import BytesIO
 from pathlib import Path
 
 import pytest
+import torch
 
-from state.app_settings import AppSettings
 from app_factory import create_app
-from state import RuntimeConfig, build_initial_state, set_state_service_for_tests
 from app_handler import ServiceBundle
-from runtime_config.model_download_specs import DEFAULT_MODEL_DOWNLOAD_SPECS, DEFAULT_REQUIRED_MODEL_TYPES, resolve_model_path
+from runtime_config.model_download_specs import (
+    DEPTH_PROCESSOR_CP_ID,
+    IMG_GEN_MODEL_CP_ID,
+    get_ic_loras_cp_ids,
+    get_latest_ltx_model_id,
+    get_ltx_model_spec,
+    resolve_model_path,
+)
+from runtime_config.port_constant import PORT
+from state import RuntimeConfig, build_initial_state, set_state_service_for_tests
+from state.app_settings import AppSettings
+from state.app_state_types import HfAuthenticated
 from tests.fake_camera_motion_prompts import FAKE_CAMERA_MOTION_PROMPTS
 from tests.fakes.services import FakeServices
 
@@ -39,18 +49,19 @@ def test_state(tmp_path: Path, fake_services: FakeServices):
         directory.mkdir(parents=True, exist_ok=True)
 
     config = RuntimeConfig(
-        device="cpu",
+        device=torch.device("cpu"),
+        app_data_dir=app_data,
         default_models_dir=default_models_dir,
-        model_download_specs=DEFAULT_MODEL_DOWNLOAD_SPECS,
-        required_model_types=DEFAULT_REQUIRED_MODEL_TYPES,
         outputs_dir=outputs_dir,
         settings_file=app_data / "settings.json",
         ltx_api_base_url="https://api.ltx.video",
-        force_api_generations=False,
+        local_generations_mode="full_models_loading",
         use_sage_attention=False,
         camera_motion_prompts=FAKE_CAMERA_MOTION_PROMPTS,
         default_negative_prompt=DEFAULT_NEGATIVE_PROMPT,
         dev_mode=False,
+        hf_oauth_client_id="test-client-id",
+        backend_port=PORT,
     )
 
     bundle = ServiceBundle(
@@ -77,6 +88,10 @@ def test_state(tmp_path: Path, fake_services: FakeServices):
         DEFAULT_APP_SETTINGS.model_copy(deep=True),
         service_bundle=bundle,
     )
+    handler.state.hf_auth_state = HfAuthenticated(
+        access_token="fake-hf-token",
+        expires_at=1e18,
+    )
     set_state_service_for_tests(handler)
     yield handler
 
@@ -98,27 +113,27 @@ def default_app_settings() -> AppSettings:
     return DEFAULT_APP_SETTINGS.model_copy(deep=True)
 
 
-def _test_model_path(test_state, model_type):
-    return resolve_model_path(test_state.config.default_models_dir, test_state.config.model_download_specs, model_type)
+def _test_model_path(test_state, cp_id: str) -> Path:
+    return resolve_model_path(test_state.config.default_models_dir, cp_id)
 
 
 @pytest.fixture
 def create_fake_model_files(test_state):
     def _create(include_zit: bool = False):
-        for path in (
-            _test_model_path(test_state, "checkpoint"),
-            _test_model_path(test_state, "upsampler"),
-        ):
+        ltx_spec = get_ltx_model_spec(get_latest_ltx_model_id())
+
+        for cp_id in (ltx_spec.model_cp, ltx_spec.upscale_cp):
+            path = _test_model_path(test_state, cp_id)
             path.parent.mkdir(parents=True, exist_ok=True)
             path.write_bytes(b"\x00" * 1024)
 
-        te_dir = _test_model_path(test_state, "text_encoder")
+        te_dir = _test_model_path(test_state, ltx_spec.text_encoder_cp)
         te_dir.mkdir(parents=True, exist_ok=True)
         (te_dir / "model.safetensors").write_bytes(b"\x00" * 1024)
         (te_dir / "tokenizer.model").write_bytes(b"\x00" * 1024)
 
         if include_zit:
-            zit_dir = _test_model_path(test_state, "zit")
+            zit_dir = _test_model_path(test_state, IMG_GEN_MODEL_CP_ID)
             zit_dir.mkdir(parents=True, exist_ok=True)
             (zit_dir / "model.safetensors").write_bytes(b"\x00" * 1024)
 
@@ -127,11 +142,21 @@ def create_fake_model_files(test_state):
 
 @pytest.fixture
 def create_fake_ic_lora_files(test_state):
-    def _create(names: list[str]):
-        for name in names:
-            path = _test_model_path(test_state, "ic_lora").parent / f"{name}.safetensors"
+    def _create(include_depth: bool = True):
+        ltx_spec = get_ltx_model_spec(get_latest_ltx_model_id())
+        for cp_id in get_ic_loras_cp_ids(ltx_spec.ic_loras_spec):
+            path = _test_model_path(test_state, cp_id)
             path.parent.mkdir(parents=True, exist_ok=True)
             path.write_bytes(b"\x00" * 1024)
+
+        if include_depth:
+            depth_path = _test_model_path(test_state, DEPTH_PROCESSOR_CP_ID)
+            depth_path.parent.mkdir(parents=True, exist_ok=True)
+            if depth_path.suffix:
+                depth_path.write_bytes(b"\x00" * 1024)
+            else:
+                depth_path.mkdir(parents=True, exist_ok=True)
+                (depth_path / "config.json").write_text("{}", encoding="utf-8")
 
     return _create
 

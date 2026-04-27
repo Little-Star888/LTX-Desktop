@@ -3,6 +3,7 @@ import type { ParsedTimeline } from '../../lib/timeline-import'
 import type { SrtCue } from '../../lib/srt'
 import type {
   Asset,
+  AssetBins,
   AssetTake,
   ColorCorrection,
   LetterboxSettings,
@@ -13,13 +14,14 @@ import type {
   Timeline,
   TimelineClip,
   Track,
-} from '../../types/project'
+} from '../../types/project-model'
 import {
+  createAssetBinId,
   createDefaultTimeline,
   DEFAULT_COLOR_CORRECTION,
   DEFAULT_LETTERBOX,
   DEFAULT_TEXT_STYLE,
-} from '../../types/project'
+} from '../../types/project-model'
 import { resolveOverlaps, type EditorLayout, type ToolType } from './video-editor-utils'
 import {
   applyUndoSnapshot,
@@ -121,6 +123,11 @@ function makeId(prefix: string): string {
   return `${prefix}-${Date.now()}-${Math.random().toString(36).slice(2, 11)}`
 }
 
+function deleteBinEntry(bins: AssetBins, binId: string): AssetBins {
+  const { [binId]: _removed, ...rest } = bins
+  return rest
+}
+
 function markEditorModelDirty(state: EditorState): EditorState {
   if (state.projectSync.dirty) return state
   return {
@@ -201,37 +208,38 @@ function createTimelineClipFromAsset(asset: Asset, trackIndex: number, startTime
   }
 }
 
-function buildDroppedAssetInsertion(
+type DroppedAssetInsertion = {
+  tracks: Track[]
+  clips: TimelineClip[]
+  duration: number
+}
+
+function buildDroppedVisualClipInsertion(
   asset: Asset,
   trackIndex: number,
   startTime: number,
   tracks: Track[],
-): {
-  tracks: Track[]
-  clips: TimelineClip[]
-  duration: number
-} {
+): DroppedAssetInsertion {
   const track = tracks[trackIndex]
   if (!track || track.locked) {
+    return { tracks, clips: [], duration: 0 }
+  }
+
+  if (track.kind !== 'video') {
     return { tracks, clips: [], duration: 0 }
   }
 
   const trackPatched = track.sourcePatched !== false
   const isAdjustment = asset.type === 'adjustment'
   const isVideoAsset = asset.type === 'video'
-  const isAudioAsset = asset.type === 'audio'
   const isImageAsset = asset.type === 'image'
 
-  if (isAudioAsset && !trackPatched) {
-    return { tracks, clips: [], duration: 0 }
-  }
-
-  const createVideoClip = (isVideoAsset || isImageAsset || isAdjustment) && trackPatched
-  const needsAudioClip = isVideoAsset && !isAdjustment
+  const createVisualClip = (isVideoAsset || isImageAsset || isAdjustment) && trackPatched
+  const needsLinkedAudioClip = isVideoAsset && !isAdjustment
   let nextTracks = tracks
   let audioTrackIndex = -1
 
-  if (needsAudioClip) {
+  if (needsLinkedAudioClip) {
     audioTrackIndex = nextTracks.findIndex(
       (candidate, index) =>
         index > trackIndex &&
@@ -260,21 +268,21 @@ function buildDroppedAssetInsertion(
     }
   }
 
-  const createAudioClip = needsAudioClip && audioTrackIndex >= 0
-  if (!createVideoClip && !createAudioClip) {
+  const createAudioClip = needsLinkedAudioClip && audioTrackIndex >= 0
+  if (!createVisualClip && !createAudioClip) {
     return { tracks: nextTracks, clips: [], duration: 0 }
   }
 
   const duration = asset.duration || (isAdjustment ? 10 : 5)
-  const videoClipId = makeId('clip')
+  const visualClipId = makeId('clip')
   const audioClipId = makeId('clip-audio')
   const clips: TimelineClip[] = []
 
-  if (createVideoClip) {
+  if (createVisualClip) {
     clips.push({
-      id: videoClipId,
+      id: visualClipId,
       assetId: asset.id,
-      type: isAdjustment ? 'adjustment' : isVideoAsset ? 'video' : isAudioAsset ? 'audio' : 'image',
+      type: isAdjustment ? 'adjustment' : isVideoAsset ? 'video' : 'image',
       startTime,
       duration,
       trimStart: 0,
@@ -317,7 +325,7 @@ function buildDroppedAssetInsertion(
       transitionOut: { type: 'none', duration: 0.5 },
       colorCorrection: { ...DEFAULT_COLOR_CORRECTION },
       opacity: 100,
-      ...(createVideoClip ? { linkedClipIds: [videoClipId] } : {}),
+      ...(createVisualClip ? { linkedClipIds: [visualClipId] } : {}),
     })
   }
 
@@ -326,6 +334,88 @@ function buildDroppedAssetInsertion(
     clips,
     duration,
   }
+}
+
+function buildDroppedAudioClipInsertion(
+  asset: Asset,
+  trackIndex: number,
+  startTime: number,
+  tracks: Track[],
+): DroppedAssetInsertion {
+  const track = tracks[trackIndex]
+  if (!track || track.locked) {
+    return { tracks, clips: [], duration: 0 }
+  }
+
+  let nextTracks = tracks
+  let audioTrackIndex = -1
+
+  if (track.kind === 'audio') {
+    audioTrackIndex = trackIndex
+  } else {
+    audioTrackIndex = nextTracks.findIndex(
+      candidate => candidate.kind === 'audio' && !candidate.locked && candidate.sourcePatched !== false,
+    )
+    if (audioTrackIndex < 0) {
+      const audioTrackCount = nextTracks.filter(candidate => candidate.kind === 'audio').length
+      nextTracks = [
+        ...nextTracks,
+        {
+          id: makeId('track-audio'),
+          name: `A${audioTrackCount + 1}`,
+          muted: false,
+          locked: false,
+          kind: 'audio',
+        },
+      ]
+      audioTrackIndex = nextTracks.length - 1
+    }
+  }
+
+  if (audioTrackIndex < 0) {
+    return { tracks: nextTracks, clips: [], duration: 0 }
+  }
+
+  const duration = asset.duration || 5
+
+  return {
+    tracks: nextTracks,
+    clips: [{
+      id: makeId('clip-audio'),
+      assetId: asset.id,
+      type: 'audio',
+      startTime,
+      duration,
+      trimStart: 0,
+      trimEnd: 0,
+      speed: 1,
+      reversed: false,
+      muted: false,
+      volume: 1,
+      trackIndex: audioTrackIndex,
+      asset,
+      flipH: false,
+      flipV: false,
+      transitionIn: { type: 'none', duration: 0.5 },
+      transitionOut: { type: 'none', duration: 0.5 },
+      colorCorrection: { ...DEFAULT_COLOR_CORRECTION },
+      opacity: 100,
+    }],
+    duration,
+  }
+}
+
+function buildDroppedAssetInsertion(
+  asset: Asset,
+  trackIndex: number,
+  startTime: number,
+  tracks: Track[],
+): DroppedAssetInsertion {
+  if (asset.type === 'audio') {
+    return buildDroppedAudioClipInsertion(asset, trackIndex, startTime, tracks)
+  }
+
+  return buildDroppedVisualClipInsertion(asset, trackIndex, startTime, tracks)
 }
 
 function createTextClip(style?: Partial<TextOverlayStyle>, startTime = 0, trackIndex = 0): TimelineClip {
@@ -662,6 +752,8 @@ export function deleteTimeline(state: EditorState, timelineId: string): EditorSt
 }
 
 export function importParsedTimeline(state: EditorState, parsed: ParsedTimeline): EditorState {
+  const importedBinId = Object.entries(state.editorModel.bins).find(([, name]) => name === 'Imported')?.[0]
+    ?? createAssetBinId()
   const importedAssets: Asset[] = parsed.mediaRefs.map(ref => ({
     id: makeId('asset'),
     type: ref.type,
@@ -673,7 +765,7 @@ export function importParsedTimeline(state: EditorState, parsed: ParsedTimeline)
     prompt: ref.name || ref.path.split(/[/\\]/).pop() || 'Imported media',
     resolution: ref.width && ref.height ? `${ref.width}x${ref.height}` : 'Unknown',
     duration: ref.duration || undefined,
-    bin: 'Imported',
+    binId: importedBinId,
     createdAt: Date.now(),
   }))
 
@@ -755,6 +847,10 @@ export function importParsedTimeline(state: EditorState, parsed: ParsedTimeline)
   return {
     ...updateEditorModel(state, editorModel => ({
       ...editorModel,
+      bins: {
+        ...editorModel.bins,
+        [importedBinId]: 'Imported',
+      },
       assets: [...importedAssets, ...editorModel.assets],
       timelines: [...editorModel.timelines, timeline],
       activeTimelineId: timeline.id,
@@ -1544,29 +1640,57 @@ export function updateAsset(state: EditorState, assetId: string, patch: Partial<
   }))
 }
 
-export function setAssetBin(state: EditorState, assetId: string, bin?: string): EditorState {
-  return updateAsset(state, assetId, { bin })
+export function setAssetBin(state: EditorState, assetId: string, binId?: string): EditorState {
+  return updateAsset(state, assetId, { binId })
 }
 
-export function assignAssetsToBin(state: EditorState, assetIds: string[], bin?: string): EditorState {
+export function createBin(state: EditorState, binId: string, name: string): EditorState {
+  const trimmedName = name.trim()
+  if (!trimmedName) return state
+
+  return updateEditorModel(state, editorModel => (
+    editorModel.bins[binId] || Object.values(editorModel.bins).includes(trimmedName)
+      ? editorModel
+      : {
+          ...editorModel,
+          bins: {
+            ...editorModel.bins,
+            [binId]: trimmedName,
+          },
+        }
+  ))
+}
+
+export function assignAssetsToBin(state: EditorState, assetIds: string[], binId?: string): EditorState {
   const assetSet = new Set(assetIds)
   return updateEditorModel(state, editorModel => ({
     ...editorModel,
-    assets: editorModel.assets.map(asset => (assetSet.has(asset.id) ? { ...asset, bin } : asset)),
+    assets: editorModel.assets.map(asset => (assetSet.has(asset.id) ? { ...asset, binId } : asset)),
   }))
 }
 
-export function renameBin(state: EditorState, oldName: string, newName: string): EditorState {
-  return updateEditorModel(state, editorModel => ({
-    ...editorModel,
-    assets: editorModel.assets.map(asset => (asset.bin === oldName ? { ...asset, bin: newName } : asset)),
-  }))
+export function renameBin(state: EditorState, binId: string, newName: string): EditorState {
+  const trimmedName = newName.trim()
+  if (!trimmedName) return state
+
+  return updateEditorModel(state, editorModel => (
+    !editorModel.bins[binId] || Object.entries(editorModel.bins).some(([id, name]) => id !== binId && name === trimmedName)
+      ? editorModel
+      : {
+          ...editorModel,
+          bins: {
+            ...editorModel.bins,
+            [binId]: trimmedName,
+          },
+        }
+  ))
 }
 
-export function clearBin(state: EditorState, binName: string): EditorState {
+export function clearBin(state: EditorState, binId: string): EditorState {
   return updateEditorModel(state, editorModel => ({
     ...editorModel,
-    assets: editorModel.assets.map(asset => (asset.bin === binName ? { ...asset, bin: undefined } : asset)),
+    bins: deleteBinEntry(editorModel.bins, binId),
+    assets: editorModel.assets.map(asset => (asset.binId === binId ? { ...asset, binId: undefined } : asset)),
   }))
 }
 

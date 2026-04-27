@@ -1,4 +1,4 @@
-"""Pipeline lifecycle and warmup handler."""
+"""Pipeline lifecycle handler."""
 
 from __future__ import annotations
 
@@ -6,9 +6,17 @@ import logging
 from threading import RLock
 from typing import TYPE_CHECKING
 
+from _routes._errors import HTTPError
+from api_types import LTXLocalModelId
 from handlers.base import StateHandlerBase
 from handlers.text_handler import TextHandler
-from runtime_config.model_download_specs import resolve_model_path
+from runtime_config.model_download_specs import (
+    IMG_GEN_MODEL_CP_ID,
+    get_downloaded_ltx_model_id,
+    get_existing_cp_path,
+    get_ltx_model_spec,
+)
+from runtime_config.runtime_policy import streaming_prefetch_count_for_mode
 from services.interfaces import (
     A2VPipeline,
     DepthProcessorPipeline,
@@ -31,7 +39,6 @@ from state.app_state_types import (
     ICLoraState,
     RetakePipelineState,
     VideoPipelineState,
-    VideoPipelineWarmth,
 )
 
 if TYPE_CHECKING:
@@ -98,6 +105,12 @@ class PipelinesHandler(StateHandlerBase):
             return
         te.service.install_patches(lambda: self.state)
 
+    def _require_downloaded_ltx_model_id(self) -> LTXLocalModelId:
+        model_id = get_downloaded_ltx_model_id(self.models_dir)
+        if model_id is None:
+            raise HTTPError(409, "NO_DOWNLOADED_LTX_MODEL")
+        return model_id
+
     def _compile_if_enabled(self, state: VideoPipelineState) -> VideoPipelineState:
         if not self.state.app_settings.use_torch_compile:
             return state
@@ -116,20 +129,21 @@ class PipelinesHandler(StateHandlerBase):
 
     def _create_video_pipeline(self, model_type: VideoPipelineModelType) -> VideoPipelineState:
         gemma_root = self._text_handler.resolve_gemma_root()
-
-        checkpoint_path = str(resolve_model_path(self.models_dir, self.config.model_download_specs,"checkpoint"))
-        upsampler_path = str(resolve_model_path(self.models_dir, self.config.model_download_specs,"upsampler"))
+        model_id = self._require_downloaded_ltx_model_id()
+        spec = get_ltx_model_spec(model_id)
+        checkpoint_path = str(get_existing_cp_path(self.models_dir, spec.model_cp))
+        upsampler_path = str(get_existing_cp_path(self.models_dir, spec.upscale_cp))
 
         pipeline = self._fast_video_pipeline_class.create(
             checkpoint_path,
             gemma_root,
             upsampler_path,
             self.config.device,
+            streaming_prefetch_count_for_mode(self.config.local_generations_mode),
         )
 
         state = VideoPipelineState(
             pipeline=pipeline,
-            warmth=VideoPipelineWarmth.COLD,
             is_compiled=False,
         )
         return self._compile_if_enabled(state)
@@ -187,9 +201,7 @@ class PipelinesHandler(StateHandlerBase):
                     image_generation_pipeline = None
 
         if image_generation_pipeline is None:
-            zit_path = resolve_model_path(self.models_dir, self.config.model_download_specs,"zit")
-            if not (zit_path.exists() and any(zit_path.iterdir())):
-                raise RuntimeError("Z-Image-Turbo model not downloaded. Please download the AI models first using the Model Status menu.")
+            zit_path = get_existing_cp_path(self.models_dir, IMG_GEN_MODEL_CP_ID)
             image_generation_pipeline = self._image_generation_pipeline_class.create(str(zit_path), self._runtime_device)
         else:
             image_generation_pipeline.to(self._runtime_device)
@@ -201,26 +213,6 @@ class PipelinesHandler(StateHandlerBase):
             self._assert_invariants()
 
         return image_generation_pipeline
-
-    def preload_image_generation_pipeline_to_cpu(self) -> ImageGenerationPipeline:
-        with self._lock:
-            match self.state.cpu_slot:
-                case CpuSlot(active_pipeline=existing):
-                    return existing
-                case _:
-                    pass
-
-        zit_path = resolve_model_path(self.models_dir, self.config.model_download_specs,"zit")
-        if not (zit_path.exists() and any(zit_path.iterdir())):
-            raise RuntimeError("Z-Image-Turbo model not downloaded. Please download the AI models first using the Model Status menu.")
-
-        image_generation_pipeline = self._image_generation_pipeline_class.create(str(zit_path), None)
-        with self._lock:
-            if self.state.cpu_slot is None:
-                self.state.cpu_slot = CpuSlot(active_pipeline=image_generation_pipeline)
-                self._assert_invariants()
-                return image_generation_pipeline
-            return self.state.cpu_slot.active_pipeline
 
     def _evict_gpu_pipeline_for_swap(self) -> None:
         should_park_image_generation_pipeline = False
@@ -244,7 +236,7 @@ class PipelinesHandler(StateHandlerBase):
         elif should_cleanup:
             self._gpu_cleaner.cleanup()
 
-    def load_gpu_pipeline(self, model_type: VideoPipelineModelType, should_warm: bool = False) -> VideoPipelineState:
+    def load_gpu_pipeline(self, model_type: VideoPipelineModelType) -> VideoPipelineState:
         self._install_text_patches_if_needed()
 
         state: VideoPipelineState | None = None
@@ -262,15 +254,6 @@ class PipelinesHandler(StateHandlerBase):
             with self._lock:
                 self.state.gpu_slot = GpuSlot(active_pipeline=state)
                 self._assert_invariants()
-
-        if should_warm and state.warmth == VideoPipelineWarmth.COLD:
-            with self._lock:
-                state.warmth = VideoPipelineWarmth.WARMING
-
-            self.warmup_pipeline(model_type)
-            with self._lock:
-                if state.warmth == VideoPipelineWarmth.WARMING:
-                    state.warmth = VideoPipelineWarmth.WARM
 
         return state
 
@@ -297,13 +280,16 @@ class PipelinesHandler(StateHandlerBase):
                     pass
 
         self._evict_gpu_pipeline_for_swap()
+        model_id = self._require_downloaded_ltx_model_id()
+        model_spec = get_ltx_model_spec(model_id)
 
         pipeline = self._ic_lora_pipeline_class.create(
-            str(resolve_model_path(self.models_dir, self.config.model_download_specs,"checkpoint")),
+            str(get_existing_cp_path(self.models_dir, model_spec.model_cp)),
             self._text_handler.resolve_gemma_root(),
-            str(resolve_model_path(self.models_dir, self.config.model_download_specs,"upsampler")),
+            str(get_existing_cp_path(self.models_dir, model_spec.upscale_cp)),
             lora_path,
             self.config.device,
+            streaming_prefetch_count_for_mode(self.config.local_generations_mode),
         )
         depth_pipeline = self._depth_processor_pipeline_class.create(depth_model_path, self.config.device)
         state = ICLoraState(
@@ -329,12 +315,15 @@ class PipelinesHandler(StateHandlerBase):
                     pass
 
         self._evict_gpu_pipeline_for_swap()
+        model_id = self._require_downloaded_ltx_model_id()
+        model_spec = get_ltx_model_spec(model_id)
 
         pipeline = self._a2v_pipeline_class.create(
-            str(resolve_model_path(self.models_dir, self.config.model_download_specs,"checkpoint")),
+            str(get_existing_cp_path(self.models_dir, model_spec.model_cp)),
             self._text_handler.resolve_gemma_root(),
-            str(resolve_model_path(self.models_dir, self.config.model_download_specs,"upsampler")),
+            str(get_existing_cp_path(self.models_dir, model_spec.upscale_cp)),
             self.config.device,
+            streaming_prefetch_count_for_mode(self.config.local_generations_mode),
         )
         state = A2VPipelineState(pipeline=pipeline)
 
@@ -362,10 +351,13 @@ class PipelinesHandler(StateHandlerBase):
         from ltx_core.quantization import QuantizationPolicy
 
         quantization = QuantizationPolicy.fp8_cast() if quantized else None
+        model_id = self._require_downloaded_ltx_model_id()
+        model_spec = get_ltx_model_spec(model_id)
         pipeline = self._retake_pipeline_class.create(
-            checkpoint_path=str(resolve_model_path(self.models_dir, self.config.model_download_specs,"checkpoint")),
+            checkpoint_path=str(get_existing_cp_path(self.models_dir, model_spec.model_cp)),
             gemma_root=self._text_handler.resolve_gemma_root(),
             device=self.config.device,
+            streaming_prefetch_count=streaming_prefetch_count_for_mode(self.config.local_generations_mode),
             loras=[],
             quantization=quantization,
         )
@@ -375,8 +367,3 @@ class PipelinesHandler(StateHandlerBase):
             self.state.gpu_slot = GpuSlot(active_pipeline=state)
             self._assert_invariants()
         return state
-
-    def warmup_pipeline(self, model_type: VideoPipelineModelType) -> None:
-        state = self.load_gpu_pipeline(model_type, should_warm=False)
-        warmup_path = self.config.outputs_dir / f"_warmup_{model_type}.mp4"
-        state.pipeline.warmup(output_path=str(warmup_path))

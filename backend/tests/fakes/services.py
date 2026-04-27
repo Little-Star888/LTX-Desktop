@@ -306,6 +306,7 @@ class FakeModelDownloader:
         repo_id: str,
         filename: str,
         local_dir: str,
+        token: str | None,
         on_progress: Callable[[int], None] | None = None,
     ) -> Path:
         self._raise_if_needed()
@@ -324,6 +325,7 @@ class FakeModelDownloader:
         self,
         repo_id: str,
         local_dir: str,
+        token: str | None,
         on_progress: Callable[[int], None] | None = None,
     ) -> Path:
         self._raise_if_needed()
@@ -490,8 +492,9 @@ class FakeFastVideoPipeline(_FakeVideoPipelineBase):
         gemma_root: str | None,
         upsampler_path: str,
         device: str | object,
+        streaming_prefetch_count: int | None,
     ) -> "FakeFastVideoPipeline":
-        del checkpoint_path, gemma_root, upsampler_path, device
+        del checkpoint_path, gemma_root, upsampler_path, device, streaming_prefetch_count
         pipeline = FakeFastVideoPipeline._singleton
         if pipeline is None:
             raise RuntimeError("FakeFastVideoPipeline singleton is not bound")
@@ -576,8 +579,9 @@ class FakeIcLoraPipeline:
         upsampler_path: str,
         lora_path: str,
         device: str | object,
+        streaming_prefetch_count: int | None,
     ) -> "FakeIcLoraPipeline":
-        del checkpoint_path, gemma_root, upsampler_path, lora_path, device
+        del checkpoint_path, gemma_root, upsampler_path, lora_path, device, streaming_prefetch_count
         pipeline = FakeIcLoraPipeline._singleton
         if pipeline is None:
             raise RuntimeError("FakeIcLoraPipeline singleton is not bound")
@@ -663,8 +667,9 @@ class FakeA2VPipeline:
         gemma_root: str | None,
         upsampler_path: str,
         device: str | object,
+        streaming_prefetch_count: int | None,
     ) -> "FakeA2VPipeline":
-        del checkpoint_path, gemma_root, upsampler_path, device
+        del checkpoint_path, gemma_root, upsampler_path, device, streaming_prefetch_count
         pipeline = FakeA2VPipeline._singleton
         if pipeline is None:
             raise RuntimeError("FakeA2VPipeline singleton is not bound")
@@ -696,11 +701,12 @@ class FakeRetakePipeline:
         checkpoint_path: str,
         gemma_root: str | None,
         device: str | object,
+        streaming_prefetch_count: int | None,
         *,
         loras: list[object] | None = None,
         quantization: object | None = None,
     ) -> "FakeRetakePipeline":
-        del checkpoint_path, gemma_root, device, loras, quantization
+        del checkpoint_path, gemma_root, device, streaming_prefetch_count, loras, quantization
         pipeline = FakeRetakePipeline._singleton
         if pipeline is None:
             raise RuntimeError("FakeRetakePipeline singleton is not bound")

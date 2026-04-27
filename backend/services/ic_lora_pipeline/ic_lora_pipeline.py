@@ -18,6 +18,7 @@ class IcLoraPipeline(Protocol):
         upsampler_path: str,
         lora_path: str,
         device: torch.device,
+        streaming_prefetch_count: int | None,
     ) -> "IcLoraPipeline":
         ...
 

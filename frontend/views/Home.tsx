@@ -1,10 +1,12 @@
-import { useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { Plus, Folder, MoreVertical, Trash2, Pencil } from 'lucide-react'
 import { useProjects } from '../contexts/ProjectContext'
+import { useView } from '../contexts/ViewContext'
 import { LtxLogo } from '../components/LtxLogo'
 import { Button } from '../components/ui/button'
 import { pathToFileUrl } from '../lib/file-url'
-import type { Project } from '../types/project'
+import type { Project } from '../types/project-model'
+import { useProjectReferencesMigration } from '../hooks/useProjectReferencesMigration'
 
 function formatDate(timestamp: number): string {
   const date = new Date(timestamp)
@@ -121,11 +123,26 @@ function ProjectCard({ project, onOpen, onDelete, onRename }: {
 }
 
 export function Home() {
-  const { projects, createProject, deleteProject, renameProject, openProject } = useProjects()
+  const { projectIds, getProject, createProject, deleteProject, renameProject } = useProjects()
+  const { openProject } = useView()
+  const { migrationStatus, migrateProjects } = useProjectReferencesMigration()
   const [isCreating, setIsCreating] = useState(false)
   const [newProjectName, setNewProjectName] = useState('')
   const [renamingId, setRenamingId] = useState<string | null>(null)
   const [renameValue, setRenameValue] = useState('')
+  const migrationStartedRef = useRef(false)
+
+  useEffect(() => {
+    if (migrationStatus.status !== 'needed' || migrationStartedRef.current) return
+    migrationStartedRef.current = true
+    void migrateProjects()
+  }, [migrateProjects, migrationStatus.status])
+
+  const projects = useMemo(() => (
+    projectIds
+      .map(projectId => getProject(projectId))
+      .filter((project): project is Project => project !== null)
+  ), [getProject, projectIds])
 
   const handleCreateProject = () => {
     if (newProjectName.trim()) {
@@ -147,6 +164,28 @@ export function Home() {
     }
     setRenamingId(null)
     setRenameValue('')
+  }
+
+  if (migrationStatus.status === 'needed' || migrationStatus.status === 'inProgress') {
+    const progressPct = migrationStatus.status === 'inProgress'
+      ? migrationStatus.ratio * 100
+      : 0
+
+    return (
+      <div className="h-screen bg-background flex items-center justify-center">
+        <div className="w-[360px]">
+          <p className="text-center text-sm text-zinc-300 mb-4">
+            Migrating project references...
+          </p>
+          <div className="h-2 w-full rounded-full bg-zinc-800 overflow-hidden">
+            <div
+              className="h-full bg-blue-500 transition-all duration-150"
+              style={{ width: `${Math.max(0, Math.min(100, progressPct))}%` }}
+            />
+          </div>
+        </div>
+      </div>
+    )
   }
   
   return (

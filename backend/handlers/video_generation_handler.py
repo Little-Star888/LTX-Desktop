@@ -17,23 +17,28 @@ from PIL import Image
 from api_types import (
     GenerateVideoCancelledResponse,
     GenerateVideoCompleteResponse,
+    GenerateVideoModelsSpecsResponse,
     GenerateVideoRequest,
     GenerateVideoResponse,
     ImageConditioningInput,
     VideoCameraMotion,
 )
 from _routes._errors import HTTPError
+from api_model_specs import (
+    build_generate_video_model_specs_response,
+    validate_generate_video_request,
+)
 from handlers.base import StateHandlerBase
 from handlers.generation_handler import GenerationHandler
 from handlers.pipelines_handler import PipelinesHandler
 from handlers.text_handler import TextHandler
-from runtime_config.model_download_specs import resolve_model_path
 from server_utils.media_validation import (
     normalize_optional_path,
     validate_audio_file,
     validate_image_file,
 )
 from services.interfaces import LTXAPIClient
+from services.ltx_api_client.ltx_api_client import LTXAPIClientError
 from state.app_state_types import AppState
 from state.app_settings import should_video_generate_with_ltx_api
 
@@ -51,15 +56,8 @@ FORCED_API_RESOLUTION_MAP: dict[str, dict[str, str]] = {
     "1440p": {"16:9": "2560x1440", "9:16": "1440x2560"},
     "2160p": {"16:9": "3840x2160", "9:16": "2160x3840"},
 }
-A2V_FORCED_API_RESOLUTION = "1920x1080"
 FORCED_API_ALLOWED_ASPECT_RATIOS = {"16:9", "9:16"}
-FORCED_API_ALLOWED_FPS = {24, 25, 48, 50}
-
-
-def _get_allowed_durations(model_id: str, resolution_label: str, fps: int) -> set[int]:
-    if model_id == "ltx-2-3-fast" and resolution_label == "1080p" and fps in {24, 25}:
-        return {6, 8, 10, 12, 14, 16, 18, 20}
-    return {6, 8, 10}
+_LTX_INSUFFICIENT_FUNDS_MESSAGE = "Your LTX API credits are insufficient for this generation. Buy more credits and try again."
 
 
 class VideoGenerationHandler(StateHandlerBase):
@@ -79,11 +77,19 @@ class VideoGenerationHandler(StateHandlerBase):
         self._text = text_handler
         self._ltx_api_client = ltx_api_client
 
+    def get_model_specs(self) -> GenerateVideoModelsSpecsResponse:
+        return build_generate_video_model_specs_response()
+
     def generate(self, req: GenerateVideoRequest) -> GenerateVideoResponse:
-        if should_video_generate_with_ltx_api(
+        use_api_specs = should_video_generate_with_ltx_api(
             force_api_generations=self.config.force_api_generations,
             settings=self.state.app_settings,
-        ):
+        )
+        validation_error = validate_generate_video_request(req, use_api_specs=use_api_specs)
+        if validation_error is not None:
+            raise HTTPError(422, validation_error, code="INVALID_VIDEO_GENERATION_SPEC")
+
+        if use_api_specs:
             return self._generate_forced_api(req)
 
         if self._generation.is_generation_running():
@@ -96,9 +102,6 @@ class VideoGenerationHandler(StateHandlerBase):
         audio_path = normalize_optional_path(req.audioPath)
         if audio_path:
             return self._generate_a2v(req, duration, fps, audio_path=audio_path)
-
-        if req.model != "fast":
-            raise HTTPError(400, "INVALID_LOCAL_MODEL")
 
         logger.info("Resolution %s - using fast pipeline", resolution)
 
@@ -136,7 +139,7 @@ class VideoGenerationHandler(StateHandlerBase):
         seed = self._resolve_seed()
 
         try:
-            self._pipelines.load_gpu_pipeline("fast", should_warm=False)
+            self._pipelines.load_gpu_pipeline("fast")
             self._generation.start_generation(generation_id)
 
             output_path = self.generate_video(
@@ -154,6 +157,9 @@ class VideoGenerationHandler(StateHandlerBase):
             self._generation.complete_generation(output_path)
             return GenerateVideoCompleteResponse(status="complete", video_path=output_path)
 
+        except HTTPError as e:
+            self._generation.fail_generation(e.detail)
+            raise
         except Exception as e:
             self._generation.fail_generation(str(e))
             if "cancelled" in str(e).lower():
@@ -181,14 +187,11 @@ class VideoGenerationHandler(StateHandlerBase):
         if self._generation.is_generation_cancelled():
             raise RuntimeError("Generation was cancelled")
 
-        if not resolve_model_path(self.models_dir, self.config.model_download_specs,"checkpoint").exists():
-            raise RuntimeError("Models not downloaded. Please download the AI models first using the Model Status menu.")
-
         total_steps = 8
 
         self._generation.update_progress("loading_model", 5, 0, total_steps)
         t_load_start = time.perf_counter()
-        pipeline_state = self._pipelines.load_gpu_pipeline("fast", should_warm=False)
+        pipeline_state = self._pipelines.load_gpu_pipeline("fast")
         t_load_end = time.perf_counter()
         logger.info("[%s] Pipeline load: %.2fs", gen_mode, t_load_end - t_load_start)
 
@@ -270,6 +273,8 @@ class VideoGenerationHandler(StateHandlerBase):
         if size is None:
             raise HTTPError(400, "INVALID_LOCAL_A2V_RESOLUTION")
         width, height = size
+        if req.aspectRatio == "9:16":
+            width, height = height, width
 
         num_frames = self._compute_num_frames(duration, fps)
 
@@ -337,6 +342,9 @@ class VideoGenerationHandler(StateHandlerBase):
             self._generation.complete_generation(str(output_path))
             return GenerateVideoCompleteResponse(status="complete", video_path=str(output_path))
 
+        except HTTPError as e:
+            self._generation.fail_generation(e.detail)
+            raise
         except Exception as e:
             self._generation.fail_generation(str(e))
             if "cancelled" in str(e).lower():
@@ -413,12 +421,12 @@ class VideoGenerationHandler(StateHandlerBase):
             requested_model = req.model
             api_model_id = FORCED_API_MODEL_MAP.get(requested_model)
             if api_model_id is None:
-                raise HTTPError(400, "INVALID_FORCED_API_MODEL")
+                raise HTTPError(500, "INVALID_FORCED_API_MODEL_CONFIG")
 
             resolution_label = req.resolution
             resolution_by_aspect = FORCED_API_RESOLUTION_MAP.get(resolution_label)
             if resolution_by_aspect is None:
-                raise HTTPError(400, "INVALID_FORCED_API_RESOLUTION")
+                raise HTTPError(500, "INVALID_FORCED_API_RESOLUTION_CONFIG")
 
             aspect_ratio = req.aspectRatio
             if aspect_ratio not in FORCED_API_ALLOWED_ASPECT_RATIOS:
@@ -432,10 +440,6 @@ class VideoGenerationHandler(StateHandlerBase):
                 raise RuntimeError("Generation was cancelled")
 
             if has_input_audio:
-                api_model_id = FORCED_API_MODEL_MAP["pro"]
-                if api_resolution != A2V_FORCED_API_RESOLUTION:
-                    logger.warning("A2V requested with resolution=%s; overriding to '%s'", api_resolution, A2V_FORCED_API_RESOLUTION)
-                api_resolution = A2V_FORCED_API_RESOLUTION
                 validated_audio_path = validate_audio_file(audio_path)
                 validated_image_path: Path | None = None
                 if image_path is not None:
@@ -468,10 +472,6 @@ class VideoGenerationHandler(StateHandlerBase):
 
                 duration = req.duration
                 fps = req.fps
-                if fps not in FORCED_API_ALLOWED_FPS:
-                    raise HTTPError(400, "INVALID_FORCED_API_FPS")
-                if duration not in _get_allowed_durations(api_model_id, resolution_label, fps):
-                    raise HTTPError(400, "INVALID_FORCED_API_DURATION")
 
                 generate_audio = req.audio
                 self._generation.update_progress("uploading_image", 20, None, None)
@@ -495,10 +495,6 @@ class VideoGenerationHandler(StateHandlerBase):
             else:
                 duration = req.duration
                 fps = req.fps
-                if fps not in FORCED_API_ALLOWED_FPS:
-                    raise HTTPError(400, "INVALID_FORCED_API_FPS")
-                if duration not in _get_allowed_durations(api_model_id, resolution_label, fps):
-                    raise HTTPError(400, "INVALID_FORCED_API_DURATION")
 
                 generate_audio = req.audio
                 self._generation.update_progress("inference", 55, None, None)
@@ -528,6 +524,10 @@ class VideoGenerationHandler(StateHandlerBase):
         except HTTPError as e:
             self._generation.fail_generation(e.detail)
             raise
+        except LTXAPIClientError as e:
+            mapped_error = self._map_ltx_api_generation_error(e)
+            self._generation.fail_generation(mapped_error.detail)
+            raise mapped_error from e
         except Exception as e:
             self._generation.fail_generation(str(e))
             if "cancelled" in str(e).lower():
@@ -539,3 +539,9 @@ class VideoGenerationHandler(StateHandlerBase):
         output_path = self._make_output_path()
         output_path.write_bytes(video_bytes)
         return output_path
+
+    @staticmethod
+    def _map_ltx_api_generation_error(exc: LTXAPIClientError) -> HTTPError:
+        if exc.status_code == 402 and exc.provider_error_type == "insufficient_funds_error":
+            return HTTPError(402, _LTX_INSUFFICIENT_FUNDS_MESSAGE, code="LTX_INSUFFICIENT_FUNDS")
+        return HTTPError(exc.status_code, exc.detail)

@@ -1,5 +1,5 @@
 import { useCallback, useRef } from 'react'
-import type { Asset } from '../../types/project'
+import type { Asset } from '../../types/project-model'
 import { addGenericAssetToProject, addVisualAssetToProject } from '../../lib/asset-copy'
 import { pathToFileUrl } from '../../lib/file-url'
 import { useEditorActions } from './editor-store'

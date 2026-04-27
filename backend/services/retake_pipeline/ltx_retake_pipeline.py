@@ -34,6 +34,7 @@ class LTXRetakePipeline:
         checkpoint_path: str,
         gemma_root: str | None,
         device: torch.device,
+        streaming_prefetch_count: int | None,
         *,
         loras: list[LoraPathStrengthAndSDOps] | None = None,
         quantization: QuantizationPolicy | None = None,
@@ -42,6 +43,7 @@ class LTXRetakePipeline:
             checkpoint_path=checkpoint_path,
             gemma_root=gemma_root,
             device=device,
+            streaming_prefetch_count=streaming_prefetch_count,
             loras=loras or [],
             quantization=quantization,
         )
@@ -51,6 +53,7 @@ class LTXRetakePipeline:
         checkpoint_path: str,
         gemma_root: str | None,
         device: torch.device,
+        streaming_prefetch_count: int | None,
         *,
         loras: list[LoraPathStrengthAndSDOps],
         quantization: QuantizationPolicy | None,
@@ -66,6 +69,7 @@ class LTXRetakePipeline:
 
         self.device = device
         self.dtype = torch.bfloat16
+        self._streaming_prefetch_count = streaming_prefetch_count
 
         self.prompt_encoder = PromptEncoder(
             checkpoint_path=checkpoint_path,
@@ -284,7 +288,7 @@ class LTXRetakePipeline:
             regenerate_audio=regenerate_audio,
             enhance_prompt=enhance_prompt,
             distilled=distilled,
-            streaming_prefetch_count=2,
+            streaming_prefetch_count=self._streaming_prefetch_count,
         )
         audio_out: Audio | None = audio
         tiling_config = TilingConfig.default()

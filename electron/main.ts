@@ -7,6 +7,7 @@ import { registerAppHandlers } from './ipc/app-handlers'
 import { registerFileHandlers } from './ipc/file-handlers'
 import { registerLogHandlers } from './ipc/log-handlers'
 import { registerVideoProcessingHandlers } from './ipc/video-processing-handlers'
+import { logger } from './logger'
 import { initSessionLog } from './logging-management'
 import { stopPythonBackend } from './python-backend'
 import { initAutoUpdater } from './updater'
@@ -15,9 +16,9 @@ import { sendAnalyticsEvent } from './analytics'
 
 function logAppVersion(): void {
   if (!app.isPackaged) {
-    console.log('[LTX Desktop] Running in development mode')
+    logger.info('[LTX Desktop] Running in development mode')
   } else {
-    console.log(`[LTX Desktop] Version ${app.getVersion()}`)
+    logger.info(`[LTX Desktop] Version ${app.getVersion()}`)
   }
 }
 

@@ -2,7 +2,7 @@ import React from 'react'
 import { Plus, Gauge, Download, Maximize2, Sparkles, FileUp, FileDown, ZoomOut, ZoomIn } from 'lucide-react'
 import { Button } from '../../components/ui/button'
 import { Tooltip } from '../../components/ui/tooltip'
-import type { TimelineClip, Track, SubtitleClip } from '../../types/project'
+import type { TimelineClip, Track, SubtitleClip } from '../../types/project-model'
 
 interface TimelineToolbarProps {
   selectedClip: TimelineClip | null

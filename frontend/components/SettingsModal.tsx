@@ -1,10 +1,12 @@
-import { AlertCircle, Check, Download, Film, Folder, Info, KeyRound, Settings, Sliders, Sparkles, X, Zap } from 'lucide-react'
-import React, { useEffect, useRef, useState } from 'react'
+import { AlertCircle, Check, Download, Film, Folder, Info, KeyRound, Settings, Sparkles, X, Zap } from 'lucide-react'
+import React, { useEffect, useMemo, useRef, useState } from 'react'
 import { Button } from './ui/button'
 import { useAppSettings, type AppSettings } from '../contexts/AppSettingsContext'
-import { ApiClient } from '../lib/api-client'
+import { ApiClient, type ApiSuccessOf } from '../lib/api-client'
 import { logger } from '../lib/logger'
 import { ApiKeyHelperRow, LtxApiKeyInput, LtxApiKeyHelperRow } from './LtxApiKeyInput'
+import { useHfAuth } from '../hooks/use-hf-auth'
+import { useHfModelAccess } from '../hooks/use-hf-model-access'
 
 interface SettingsModalProps {
   isOpen: boolean
@@ -12,7 +14,7 @@ interface SettingsModalProps {
   initialTab?: TabId
 }
 
-type TabId = 'general' | 'apiKeys' | 'inference' | 'promptEnhancer' | 'about'
+type TabId = 'general' | 'apiKeys' | 'promptEnhancer' | 'about'
 
 export function SettingsModal({ isOpen, onClose, initialTab }: SettingsModalProps) {
   const { settings, updateSettings, saveLtxApiKey, saveFalApiKey, saveGeminiApiKey, forceApiGenerations } = useAppSettings()
@@ -25,9 +27,19 @@ export function SettingsModal({ isOpen, onClose, initialTab }: SettingsModalProp
   const falApiKeyInputRef = useRef<HTMLInputElement>(null)
   const [geminiApiKeyInput, setGeminiApiKeyInput] = useState('')
   const geminiApiKeyInputRef = useRef<HTMLInputElement>(null)
-  const [textEncoderStatus, setTextEncoderStatus] = useState<Awaited<ReturnType<typeof ApiClient.getModelsStatus>>['text_encoder_status'] | null>(null)
+  const [textEncoderRecommendation, setTextEncoderRecommendation] = useState<ApiSuccessOf<'getTextEncoderRecommendation'> | null>(null)
   const [isDownloading, setIsDownloading] = useState(false)
   const [downloadError, setDownloadError] = useState<string | null>(null)
+  const [downloadSessionId, setDownloadSessionId] = useState<string | null>(null)
+  const [downloadProgress, setDownloadProgress] = useState<ApiSuccessOf<'getModelDownloadProgress'> | null>(null)
+  const { hfAuthStatus, hfAuthPolling, startHuggingFaceLogin, handleHuggingFaceLogout } = useHfAuth(isOpen)
+  const textEncoderModelTypes = useMemo(
+    () => (forceApiGenerations || !textEncoderRecommendation?.cp_to_download
+      ? []
+      : [textEncoderRecommendation.cp_to_download]),
+    [forceApiGenerations, textEncoderRecommendation?.cp_to_download],
+  )
+  const { accessMap: teAccessMap, allAuthorized: teAllAuthorized } = useHfModelAccess(textEncoderModelTypes, hfAuthStatus)
   const [appVersion, setAppVersion] = useState('')
   const [noticesText, setNoticesText] = useState<string | null>(null)
   const [noticesLoading, setNoticesLoading] = useState(false)
@@ -75,57 +87,69 @@ export function SettingsModal({ isOpen, onClose, initialTab }: SettingsModalProp
       .catch(() => {})
   }, [isOpen])
 
-  // Fetch text encoder status when modal opens
+  // Fetch text encoder recommendation when modal opens
   useEffect(() => {
-    if (!isOpen) return
+    if (!isOpen || forceApiGenerations) return
 
-    const fetchStatus = async () => {
-      try {
-        const data = await ApiClient.getModelsStatus()
-        setTextEncoderStatus(data.text_encoder_status)
-      } catch (e) {
-        logger.error(`Failed to fetch text encoder status: ${e}`)
+    const fetchRecommendation = async () => {
+      const result = await ApiClient.getTextEncoderRecommendation()
+      if (!result.ok) {
+        logger.error(`Failed to fetch text encoder recommendation: ${result.error.message}`)
+        return
+      }
+
+      const data = result.data
+      setTextEncoderRecommendation(data)
+      if (data.cp_to_download === null) {
+        setIsDownloading(false)
       }
     }
 
-    fetchStatus()
-    // Poll while downloading
-    const interval = setInterval(fetchStatus, 2000)
+    void fetchRecommendation()
+  }, [forceApiGenerations, isOpen])
+
+  // Poll download progress via session ID
+  useEffect(() => {
+    if (!isDownloading || !downloadSessionId) return
+
+    const poll = async () => {
+      const result = await ApiClient.getModelDownloadProgress({ sessionId: downloadSessionId })
+      if (!result.ok) return
+      setDownloadProgress(result.data)
+      if (result.data.status === 'complete') {
+        setIsDownloading(false)
+        setDownloadSessionId(null)
+        const rec = await ApiClient.getTextEncoderRecommendation()
+        if (rec.ok) setTextEncoderRecommendation(rec.data)
+      } else if (result.data.status === 'error') {
+        setDownloadError(result.data.error ?? 'Download failed')
+        setIsDownloading(false)
+        setDownloadSessionId(null)
+      }
+    }
+
+    void poll()
+    const interval = setInterval(() => { void poll() }, 1000)
     return () => clearInterval(interval)
-  }, [isOpen, isDownloading])
+  }, [isDownloading, downloadSessionId])
 
   // Handle text encoder download
   const handleDownloadTextEncoder = async () => {
+    if (!textEncoderRecommendation?.cp_to_download) return
     setIsDownloading(true)
     setDownloadError(null)
-    try {
-      const data = await ApiClient.startTextEncoderDownload()
-
-      if (data.status === 'already_downloaded') {
-        setTextEncoderStatus(prev => prev ? { ...prev, downloaded: true } : null)
-      }
-      // Poll for completion
-      const pollInterval = setInterval(async () => {
-        try {
-          const statusData = await ApiClient.getModelsStatus()
-          setTextEncoderStatus(statusData.text_encoder_status)
-          if (statusData.text_encoder_status?.downloaded) {
-            setIsDownloading(false)
-            clearInterval(pollInterval)
-          }
-        } catch {
-          // ignore
-        }
-      }, 2000)
-
-      // Timeout after 30 minutes
-      setTimeout(() => {
-        clearInterval(pollInterval)
-        if (isDownloading) setIsDownloading(false)
-      }, 30 * 60 * 1000)
-    } catch (e) {
-      setDownloadError(e instanceof Error ? e.message : 'Download failed')
+    setDownloadProgress(null)
+    const result = await ApiClient.startModelDownload({
+      type: 'download',
+      cp_ids: [textEncoderRecommendation.cp_to_download],
+    })
+    if (!result.ok) {
+      setDownloadError(result.error.message)
       setIsDownloading(false)
+      return
+    }
+    if (result.data.status === 'started') {
+      setDownloadSessionId(result.data.sessionId)
     }
   }
 
@@ -135,13 +159,6 @@ export function SettingsModal({ isOpen, onClose, initialTab }: SettingsModalProp
     onSettingsChange({
       ...settings,
       useTorchCompile: !settings.useTorchCompile,
-    })
-  }
-
-  const handleToggleLoadOnStartup = () => {
-    onSettingsChange({
-      ...settings,
-      loadOnStartup: !settings.loadOnStartup,
     })
   }
 
@@ -162,28 +179,6 @@ export function SettingsModal({ isOpen, onClose, initialTab }: SettingsModalProp
     onSettingsChange({
       ...settings,
       promptCacheSize: size,
-    })
-  }
-
-  const handleFastUpscalerToggle = () => {
-    onSettingsChange({
-      ...settings,
-      fastModel: { ...settings.fastModel, useUpscaler: !settings.fastModel?.useUpscaler },
-    })
-  }
-
-  const handleProStepsChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const steps = Math.max(1, Math.min(100, parseInt(e.target.value) || 20))
-    onSettingsChange({
-      ...settings,
-      proModel: { ...settings.proModel, steps },
-    })
-  }
-
-  const handleProUpscalerToggle = () => {
-    onSettingsChange({
-      ...settings,
-      proModel: { ...settings.proModel, useUpscaler: !settings.proModel.useUpscaler },
     })
   }
 
@@ -254,7 +249,6 @@ export function SettingsModal({ isOpen, onClose, initialTab }: SettingsModalProp
   const tabs = [
     { id: 'general' as TabId, label: 'General', icon: Settings },
     { id: 'apiKeys' as TabId, label: 'API Keys', icon: KeyRound },
-    { id: 'inference' as TabId, label: 'Inference', icon: Sliders },
     { id: 'promptEnhancer' as TabId, label: 'Prompt Enhancer', icon: Sparkles },
     { id: 'about' as TabId, label: 'About', icon: Info },
   ]
@@ -388,6 +382,7 @@ export function SettingsModal({ isOpen, onClose, initialTab }: SettingsModalProp
               )}
 
               {/* Text Encoding Section */}
+              {!forceApiGenerations && (
               <div className="space-y-4">
                 <div className="flex items-center gap-2">
                   <svg className="h-4 w-4 text-blue-400" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
@@ -491,28 +486,51 @@ export function SettingsModal({ isOpen, onClose, initialTab }: SettingsModalProp
                   {/* Download Status - show when this option is selected */}
                   {settings.useLocalTextEncoder && (
                     <div className="mt-3 pt-3 border-t border-zinc-700/50">
-                      {textEncoderStatus?.downloaded ? (
+                      {textEncoderRecommendation?.cp_to_download === null ? (
                         <div className="flex items-center gap-2 text-xs text-green-400">
                           <Check className="h-4 w-4" />
-                          <span>Downloaded ({textEncoderStatus.size_gb} GB)</span>
+                          <span>Downloaded ({textEncoderRecommendation?.expected_size_gb ?? 0} GB)</span>
                         </div>
                       ) : isDownloading ? (
-                        <div className="flex items-center gap-2 text-xs text-blue-400">
-                          <div className="w-4 h-4 border-2 border-blue-400 border-t-transparent rounded-full animate-spin" />
-                          <span>Downloading text encoder...</span>
+                        <div className="space-y-1.5">
+                          <div className="flex items-center justify-between text-[11px]">
+                            <span className="text-zinc-300">Downloading text encoder...</span>
+                            <span className="text-zinc-500">{downloadProgress?.status === 'downloading' ? Math.round(downloadProgress.current_file_progress) : 0}%</span>
+                          </div>
+                          <div className="h-1.5 bg-zinc-800 rounded-full overflow-hidden">
+                            <div className="h-full transition-all duration-300 bg-blue-500" style={{ width: `${downloadProgress?.status === 'downloading' ? downloadProgress.current_file_progress : 0}%` }} />
+                          </div>
                         </div>
                       ) : (
                         <div className="space-y-2">
                           <div className="flex items-center gap-2 text-xs text-amber-400">
                             <AlertCircle className="h-4 w-4" />
-                            <span>Not downloaded ({textEncoderStatus?.expected_size_gb || 8} GB required)</span>
+                            <span>Not downloaded ({textEncoderRecommendation?.expected_size_gb || 0} GB required)</span>
                           </div>
+                          {hfAuthStatus === 'authenticated' && !teAllAuthorized && Object.keys(teAccessMap).length > 0 && (
+                            <div className="space-y-1.5 mb-2">
+                              {Object.entries(teAccessMap)
+                                .filter(([, status]) => status === 'not_authorized')
+                                .map(([repoId]) => (
+                                  <div key={repoId} className="flex items-center justify-between bg-zinc-900 rounded px-2 py-1.5">
+                                    <span className="text-[10px] text-zinc-400 font-mono">{repoId}</span>
+                                    <button
+                                      onClick={(e) => { e.stopPropagation(); window.electronAPI.openHuggingFaceRepo({ repoId }) }}
+                                      className="text-[10px] text-indigo-400 hover:text-indigo-300 font-medium"
+                                    >
+                                      Request access
+                                    </button>
+                                  </div>
+                                ))}
+                            </div>
+                          )}
                           <Button
                             size="sm"
                             onClick={(e) => {
                               e.stopPropagation()
-                              handleDownloadTextEncoder()
+                              void handleDownloadTextEncoder()
                             }}
+                            disabled={!textEncoderRecommendation?.cp_to_download || !teAllAuthorized || hfAuthStatus !== 'authenticated'}
                             className="w-full bg-blue-600 hover:bg-blue-500 text-white text-xs"
                           >
                             <Download className="h-3 w-3 mr-2" />
@@ -527,54 +545,7 @@ export function SettingsModal({ isOpen, onClose, initialTab }: SettingsModalProp
                   )}
                 </div>
               </div>
-
-              {/* Load on Startup Setting */}
-              <div className="space-y-3 pt-4 border-t border-zinc-800">
-                <div className="flex items-start justify-between gap-4">
-                  <div className="flex-1">
-                    <div className="flex items-center gap-2 mb-1">
-                      <svg className="h-4 w-4 text-blue-400" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                        <path d="M12 2v4m0 12v4M4.93 4.93l2.83 2.83m8.48 8.48l2.83 2.83M2 12h4m12 0h4M4.93 19.07l2.83-2.83m8.48-8.48l2.83-2.83" />
-                      </svg>
-                      <label className="text-sm font-medium text-white">
-                        Preload models on startup
-                      </label>
-                    </div>
-                    <p className="text-xs text-zinc-500 leading-relaxed">
-                      Load AI models in the background after the app starts. The video model is loaded
-                      and warmed up on GPU, and the image model is preloaded into CPU RAM for faster
-                      first generation. When disabled, models load on first use (faster startup, slower
-                      first generation). Requires app restart to take effect.
-                    </p>
-                  </div>
-
-                  {/* Toggle Switch */}
-                  <button
-                    onClick={handleToggleLoadOnStartup}
-                    className={`relative inline-flex h-6 w-11 flex-shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none ${
-                      settings.loadOnStartup ? 'bg-blue-500' : 'bg-zinc-700'
-                    }`}
-                  >
-                    <span
-                      className={`pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out ${
-                        settings.loadOnStartup ? 'translate-x-5' : 'translate-x-0'
-                      }`}
-                    />
-                  </button>
-                </div>
-
-                {/* Status indicator */}
-                <div className={`text-xs px-2 py-1 rounded inline-flex items-center gap-1.5 ${
-                  settings.loadOnStartup
-                    ? 'bg-blue-500/10 text-blue-400'
-                    : 'bg-zinc-800 text-zinc-500'
-                }`}>
-                  <div className={`w-1.5 h-1.5 rounded-full ${
-                    settings.loadOnStartup ? 'bg-blue-400' : 'bg-zinc-600'
-                  }`} />
-                  {settings.loadOnStartup ? 'Models preload in background at startup' : 'Models load on first generation'}
-                </div>
-              </div>
+              )}
 
               {/* Torch Compile Setting */}
               <div className="space-y-3 pt-4 border-t border-zinc-800">
@@ -744,7 +715,7 @@ export function SettingsModal({ isOpen, onClose, initialTab }: SettingsModalProp
                 </div>
 
                 <p className="text-xs text-zinc-500 leading-relaxed">
-                  Your LTX API key is used for cloud text encoding, prompt enhancement, and Pro generation.
+                  Your LTX API key is used for cloud text encoding, prompt enhancement, and API video generation.
                   Add your key below to unlock these features.
                 </p>
 
@@ -923,115 +894,57 @@ export function SettingsModal({ isOpen, onClose, initialTab }: SettingsModalProp
                   </div>
                 </div>
               </div>
-            </>
-          )}
 
-          {activeTab === 'inference' && (
-            <>
-              {/* Fast Model Settings */}
+              {/* HuggingFace Account */}
+              {window.electronAPI.hfGatingEnabled && (
               <div className="space-y-4">
                 <div className="flex items-center gap-2">
-                  <Zap className="h-4 w-4 text-green-400" />
-                  <h3 className="text-sm font-semibold text-white">Fast Model (Distilled)</h3>
+                  <Download className="h-4 w-4 text-orange-400" />
+                  <h3 className="text-sm font-semibold text-white">HuggingFace</h3>
                 </div>
 
-                <div className="bg-zinc-800/50 rounded-lg p-4 space-y-4">
-                  {/* Steps Info */}
-                  <div className="flex items-center justify-between">
-                    <div>
-                      <label className="text-sm text-white">Inference Steps</label>
-                      <p className="text-xs text-zinc-500">Fixed at 8 steps (built into distilled model)</p>
-                    </div>
-                    <span className="px-3 py-1.5 bg-zinc-700 rounded-lg text-sm text-zinc-400">8</span>
-                  </div>
-
-                  {/* Upscaler Toggle */}
-                  <div className="flex items-center justify-between">
-                    <div>
-                      <label className="text-sm text-white">2x Upscaler</label>
-                      <p className="text-xs text-zinc-500">When off, generates at native resolution</p>
-                    </div>
-                    <button
-                      onClick={handleFastUpscalerToggle}
-                      className={`relative inline-flex h-6 w-11 flex-shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none ${
-                        settings.fastModel?.useUpscaler !== false ? 'bg-green-500' : 'bg-zinc-700'
-                      }`}
-                    >
-                      <span
-                        className={`pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out ${
-                          settings.fastModel?.useUpscaler !== false ? 'translate-x-5' : 'translate-x-0'
-                        }`}
-                      />
-                    </button>
-                  </div>
-                </div>
-
-                {/* Summary */}
-                <div className="text-xs text-zinc-500">
-                  Current: 8 steps, {settings.fastModel?.useUpscaler !== false ? 'with upscaler (2-stage, recommended)' : 'native resolution (experimental)'}
-                </div>
-              </div>
-
-              {/* Pro Model Settings */}
-              <div className="space-y-4 pt-4 border-t border-zinc-800">
-                <div className="flex items-center gap-2">
-                  <svg className="h-4 w-4 text-blue-400" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                    <path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z" />
-                  </svg>
-                  <h3 className="text-sm font-semibold text-white">Pro Model (Full)</h3>
-                </div>
-
-                <div className="bg-zinc-800/50 rounded-lg p-4 space-y-4">
-                  {/* Steps */}
-                  <div className="flex items-center justify-between">
-                    <div>
-                      <label className="text-sm text-white">Inference Steps</label>
-                      <p className="text-xs text-zinc-500">More steps = better quality, slower</p>
-                    </div>
-                    <input
-                      type="number"
-                      min="1"
-                      max="100"
-                      value={settings.proModel?.steps ?? 20}
-                      onChange={handleProStepsChange}
-                      className="w-20 px-3 py-1.5 bg-zinc-700 border border-zinc-600 rounded-lg text-sm text-white text-center focus:outline-none focus:ring-2 focus:ring-blue-500"
-                    />
-                  </div>
-
-                  {/* Upscaler Toggle */}
-                  <div className="flex items-center justify-between">
-                    <div>
-                      <label className="text-sm text-white">2x Upscaler</label>
-                      <p className="text-xs text-zinc-500">Doubles resolution in second pass</p>
-                    </div>
-                    <button
-                      onClick={handleProUpscalerToggle}
-                      className={`relative inline-flex h-6 w-11 flex-shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none ${
-                        settings.proModel?.useUpscaler !== false ? 'bg-blue-500' : 'bg-zinc-700'
-                      }`}
-                    >
-                      <span
-                        className={`pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out ${
-                          settings.proModel?.useUpscaler !== false ? 'translate-x-5' : 'translate-x-0'
-                        }`}
-                      />
-                    </button>
-                  </div>
-                </div>
-
-                {/* Summary */}
-                <div className="text-xs text-zinc-500">
-                  Current: {settings.proModel?.steps ?? 20} steps, {settings.proModel?.useUpscaler !== false ? 'with upscaler (2-stage, recommended)' : 'native resolution'}
-                </div>
-              </div>
-
-              {/* Info Box */}
-              <div className="bg-zinc-800/30 rounded-lg p-3 mt-4">
-                <p className="text-xs text-zinc-400">
-                  <span className="text-blue-400 font-medium">Tip:</span> Lower steps = faster but lower quality.
-                  Higher steps = better quality but slower.
+                <p className="text-xs text-zinc-500 leading-relaxed">
+                  Sign in to HuggingFace to download model files.
                 </p>
+
+                <div className="bg-zinc-800/50 rounded-lg p-4 space-y-3">
+                  <div className={`text-xs px-2 py-1 rounded inline-flex items-center gap-1.5 ${
+                    hfAuthStatus === 'authenticated'
+                      ? 'bg-green-500/10 text-green-400'
+                      : 'bg-amber-500/10 text-amber-400'
+                  }`}>
+                    {hfAuthStatus === 'authenticated' ? (
+                      <>
+                        <Check className="h-3 w-3" />
+                        Signed in
+                      </>
+                    ) : (
+                      <>
+                        <AlertCircle className="h-3 w-3" />
+                        Not signed in
+                      </>
+                    )}
+                  </div>
+
+                  {hfAuthStatus === 'authenticated' ? (
+                    <button
+                      onClick={handleHuggingFaceLogout}
+                      className="px-3 py-2 bg-zinc-700 text-white text-sm rounded-lg hover:bg-zinc-600 transition-colors"
+                    >
+                      Sign out
+                    </button>
+                  ) : (
+                    <button
+                      onClick={startHuggingFaceLogin}
+                      disabled={hfAuthPolling}
+                      className="px-3 py-2 bg-indigo-600 text-white text-sm rounded-lg hover:bg-indigo-500 disabled:bg-zinc-700 disabled:text-zinc-500 disabled:cursor-not-allowed transition-colors"
+                    >
+                      {hfAuthPolling ? 'Waiting for sign in...' : 'Sign in with HuggingFace'}
+                    </button>
+                  )}
+                </div>
               </div>
+              )}
             </>
           )}
 

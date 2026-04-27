@@ -31,7 +31,7 @@ export function findFfmpegPath(): string | null {
   }
 
   if (binDir && fs.existsSync(binDir)) {
-    const bin = fs.readdirSync(binDir).find(f => f.startsWith('ffmpeg') && (f.endsWith('.exe') || !f.includes('.')))
+    const bin = fs.readdirSync(binDir).find(f => f.startsWith('ffmpeg'))
     if (bin) return path.join(binDir, bin)
   }
 

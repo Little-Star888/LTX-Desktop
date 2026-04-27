@@ -3,10 +3,9 @@ import {
   Plus, X, RefreshCw, ChevronLeft, ChevronRight, Layers, GitMerge,
   FolderPlus, Folder, Trash2, FolderOpen,
 } from 'lucide-react'
-import { useShallow } from 'zustand/react/shallow'
-import type { Asset } from '../../types/project'
+import type { Asset } from '../../types/project-model'
 import { COLOR_LABELS } from './video-editor-utils'
-import { selectAssetBins, selectAssets, selectRegenerationState } from './editor-selectors'
+import { equalAssetBins, selectAssetBins, selectAssets, selectRegenerationState } from './editor-selectors'
 import { useEditorActions, useEditorStore } from './editor-store'
 
 export interface AssetContextMenuProps {
@@ -21,6 +20,7 @@ export interface AssetContextMenuProps {
   setSelectedAssetIds: React.Dispatch<React.SetStateAction<Set<string>>>
   setAssetContextMenu: React.Dispatch<React.SetStateAction<{ assetId: string; x: number; y: number } | null>>
   createAssetFromTake: (asset: Asset, take: NonNullable<Asset['takes']>[number]) => Asset
+  openCreateBinEditor: (assetIds: string[]) => void
 }
 
 export function AssetContextMenu({
@@ -35,10 +35,11 @@ export function AssetContextMenu({
   setSelectedAssetIds,
   setAssetContextMenu,
   createAssetFromTake,
+  openCreateBinEditor,
 }: AssetContextMenuProps) {
   const actions = useEditorActions()
   const assets = useEditorStore(selectAssets)
-  const bins = useEditorStore(useShallow(selectAssetBins))
+  const bins = useEditorStore(selectAssetBins, equalAssetBins)
   const regenerationState = useEditorStore(selectRegenerationState)
   const isRegenerating = regenerationState.regeneratingAssetId !== null || regenerationState.regeneratingClipId !== null
   const regeneratingAssetId = regenerationState.regeneratingAssetId
@@ -58,8 +59,8 @@ export function AssetContextMenu({
     closeMenu()
   }
 
-  const moveToBin = (bin?: string) => {
-    actions.assignAssetsToBin(targetIds, bin)
+  const moveToBin = (binId?: string) => {
+    actions.assignAssetsToBin(targetIds, binId)
     clearSelection()
     closeMenu()
   }
@@ -257,19 +258,19 @@ export function AssetContextMenu({
 
       {bins.map(bin => (
         <button
-          key={bin}
-          onClick={() => moveToBin(bin)}
+          key={bin.id}
+          onClick={() => moveToBin(bin.id)}
           className="w-full text-left px-3 py-1.5 text-zinc-300 hover:bg-zinc-700 flex items-center gap-3"
         >
           <Folder className="h-3.5 w-3.5 text-zinc-500" />
-          <span>{bin}</span>
+          <span>{bin.name}</span>
         </button>
       ))}
 
       <button
         onClick={() => {
-          const name = prompt('New bin name:')
-          if (name?.trim()) moveToBin(name.trim())
+          openCreateBinEditor(targetIds)
+          closeMenu()
         }}
         className="w-full text-left px-3 py-1.5 text-zinc-300 hover:bg-zinc-700 flex items-center gap-3"
       >

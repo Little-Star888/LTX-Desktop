@@ -1,5 +1,5 @@
 import { useCallback } from 'react'
-import type { Asset, TimelineClip } from '../../types/project'
+import type { Asset, TimelineClip } from '../../types/project-model'
 import {
   selectActiveTimeline,
   selectAssets,

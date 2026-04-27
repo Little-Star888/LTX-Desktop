@@ -1,380 +1,272 @@
-"""Integration-style tests for model-related endpoints."""
+"""Integration-style tests for checkpoint recommendation and download endpoints."""
 
-import inspect
+from __future__ import annotations
+
+from dataclasses import replace
 from pathlib import Path
 
-from huggingface_hub import file_download
+import pytest
 
-from runtime_config.model_download_specs import resolve_downloading_dir, resolve_model_path
-from state.app_state_types import (
-    DownloadSessionComplete,
-    DownloadSessionError,
-    DownloadingSession,
-    FileDownloadRunning,
+from _routes._errors import HTTPError
+import handlers.models_handler as models_handler_module
+from runtime_config.model_download_specs import (
+    DEPTH_PROCESSOR_CP_ID,
+    IMG_GEN_MODEL_CP_ID,
+    LTXLocalModelDeprecated,
+    get_ic_loras_cp_ids,
+    get_latest_ltx_model_id,
+    get_ltx_model_spec,
+    resolve_downloading_dir,
+    resolve_model_path,
 )
+from state.app_state_types import DownloadSessionComplete, DownloadSessionError, DownloadingSession, FileDownloadRunning
+from tests.http_error_assertions import assert_http_error
 
 
-def _model_path(test_state, model_type: str) -> Path:
-    return resolve_model_path(
-        test_state.config.default_models_dir,
-        test_state.config.model_download_specs,
-        model_type,
-    )
+def _current_ltx_spec():
+    return get_ltx_model_spec(get_latest_ltx_model_id())
 
 
-def _downloading_dir(test_state) -> Path:
-    return resolve_downloading_dir(test_state.config.default_models_dir)
-
-DEFAULT_REQUIRED_MODEL_TYPES = ["checkpoint", "upsampler", "text_encoder", "zit"]
-DEFAULT_REQUIRED_MODEL_TYPES_WITHOUT_TEXT_ENCODER = ["checkpoint", "upsampler", "zit"]
+def _cp_path(test_state, cp_id: str) -> Path:
+    return resolve_model_path(test_state.config.default_models_dir, cp_id)
 
 
-class TestModelsList:
-    def test_defaults(self, client):
-        r = client.get("/api/models")
-        assert r.status_code == 200
-        data = r.json()
-        assert len(data) == 2
-        assert data[0]["id"] == "fast"
-        assert "8 steps" in data[0]["description"]
-        assert data[1]["id"] == "pro"
-        assert "20 steps" in data[1]["description"]
+class TestRecommendations:
+    def test_ltx_recommendation_requires_primary_local_bundle(self, client):
+        spec = _current_ltx_spec()
+        response = client.get("/api/models/ltx-recommendation")
+        assert response.status_code == 200
+        assert response.json() == {
+            "status": "download",
+            "cps_to_download": [
+                spec.model_cp,
+                spec.upscale_cp,
+                spec.text_encoder_cp,
+            ],
+        }
 
-    def test_custom_pro_steps(self, client, test_state):
-        test_state.state.app_settings.pro_model.steps = 30
-        r = client.get("/api/models")
-        assert "30 steps" in r.json()[1]["description"]
-
-
-class TestModelsStatus:
-    def test_nothing_downloaded(self, client):
-        r = client.get("/api/models/status")
-        assert r.status_code == 200
-        assert r.json()["all_downloaded"] is False
-        assert all("id" in model for model in r.json()["models"])
-
-    def test_ic_lora_is_optional_and_reported(self, client):
-        r = client.get("/api/models/status")
-        assert r.status_code == 200
-        ic_lora = next(m for m in r.json()["models"] if m["id"] == "ic_lora")
-        assert ic_lora["required"] is False
-
-    def test_depth_person_detector_and_pose_are_optional_and_reported(self, client):
-        r = client.get("/api/models/status")
-        assert r.status_code == 200
-        depth = next(m for m in r.json()["models"] if m["id"] == "depth_processor")
-        person_detector = next(m for m in r.json()["models"] if m["id"] == "person_detector")
-        pose = next(m for m in r.json()["models"] if m["id"] == "pose_processor")
-        assert depth["required"] is False
-        assert person_detector["required"] is False
-        assert pose["required"] is False
-
-    def test_all_downloaded(self, client, create_fake_model_files):
-        create_fake_model_files(include_zit=True)
-        r = client.get("/api/models/status")
-        assert r.json()["all_downloaded"] is True
-
-    def test_with_api_key(self, client, create_fake_model_files, test_state):
-        create_fake_model_files(include_zit=True)
+    def test_ltx_recommendation_skips_text_encoder_when_api_key_exists(self, client, test_state):
         test_state.state.app_settings.ltx_api_key = "test-key"
+        spec = _current_ltx_spec()
+        response = client.get("/api/models/ltx-recommendation")
+        assert response.status_code == 200
+        assert response.json() == {
+            "status": "download",
+            "cps_to_download": [
+                spec.model_cp,
+                spec.upscale_cp,
+            ],
+        }
 
-        r = client.get("/api/models/status")
-        te_model = next(m for m in r.json()["models"] if m["name"] == "gemma-3-12b-it-qat-q4_0-unquantized")
-        assert te_model["required"] is False
+    def test_ltx_recommendation_ok_when_required_bundle_is_downloaded(self, client, create_fake_model_files):
+        create_fake_model_files()
+        response = client.get("/api/models/ltx-recommendation")
+        assert response.status_code == 200
+        assert response.json()["status"] == "ok"
 
-    def test_forced_mode_requires_no_local_models(self, client, test_state):
-        test_state.config.force_api_generations = True
-        test_state.config.required_model_types = frozenset()
+    def test_ltx_recommendation_reports_missing_text_encoder_for_current_model(self, client, test_state, create_fake_model_files):
+        create_fake_model_files()
+        text_encoder_path = _cp_path(test_state, _current_ltx_spec().text_encoder_cp)
+        for child in text_encoder_path.iterdir():
+            child.unlink()
+        text_encoder_path.rmdir()
 
-        r = client.get("/api/models/status")
-        data = r.json()
-        assert data["all_downloaded"] is True
+        response = client.get("/api/models/ltx-recommendation")
+        assert response.status_code == 200
+        assert response.json() == {
+            "status": "download",
+            "cps_to_download": [_current_ltx_spec().text_encoder_cp],
+        }
 
-        required_names = {m["name"] for m in data["models"] if m["required"]}
-        assert required_names == set()
+    def test_img_gen_recommendation(self, client, create_fake_model_files):
+        response = client.get("/api/models/img-gen-recommendation")
+        assert response.status_code == 200
+        assert response.json()["cp_to_download"] == IMG_GEN_MODEL_CP_ID
+
+        create_fake_model_files(include_zit=True)
+        response = client.get("/api/models/img-gen-recommendation")
+        assert response.status_code == 200
+        assert response.json()["cp_to_download"] is None
+
+    def test_text_encoder_recommendation(self, client, create_fake_model_files, test_state):
+        create_fake_model_files()
+        text_encoder_path = _cp_path(test_state, _current_ltx_spec().text_encoder_cp)
+        for child in text_encoder_path.iterdir():
+            child.unlink()
+        text_encoder_path.rmdir()
+
+        response = client.get("/api/models/text-encoder-recommendation")
+        assert response.status_code == 200
+        assert response.json()["cp_to_download"] == _current_ltx_spec().text_encoder_cp
+        assert response.json()["expected_size_bytes"] > 0
+
+    def test_ic_lora_recommendation(self, client, create_fake_model_files, create_fake_ic_lora_files):
+        create_fake_model_files()
+        response = client.get("/api/models/ltx-ic-lora-recommendation")
+        assert response.status_code == 200
+        assert response.json()["cps_to_download"] == [
+            *get_ic_loras_cp_ids(_current_ltx_spec().ic_loras_spec),
+            DEPTH_PROCESSOR_CP_ID,
+        ]
+
+        create_fake_ic_lora_files()
+        response = client.get("/api/models/ltx-ic-lora-recommendation")
+        assert response.status_code == 200
+        assert response.json()["cps_to_download"] == []
 
 
 class TestDownloadProgress:
     def test_unknown_session_returns_404(self, client):
-        r = client.get("/api/models/download/progress", params={"sessionId": "nonexistent"})
-        assert r.status_code == 404
+        response = client.get("/api/models/download/progress", params={"sessionId": "nonexistent"})
+        assert_http_error(response, status_code=404, code="UNKNOWN_DOWNLOAD_SESSION")
 
-    def test_missing_session_id_returns_422(self, client):
-        r = client.get("/api/models/download/progress")
-        assert r.status_code == 422
-
-    def test_active(self, client, test_state):
+    def test_active_progress(self, client, test_state):
         test_state.state.downloading_session = DownloadingSession(
             id="test-session",
             current_running_file=FileDownloadRunning(
-                file_type="checkpoint",
-                target_path="checkpoint",
+                file_type="ltx-2.3-22b-distilled",
+                target_path="ltx-2.3-22b-distilled.safetensors",
                 downloaded_bytes=5_000_000_000,
                 speed_bytes_per_sec=50_000_000.0,
             ),
-            files_to_download={"checkpoint"},
+            files_to_download={"ltx-2.3-22b-distilled"},
             completed_files=set(),
             completed_bytes=0,
         )
-        r = client.get("/api/models/download/progress", params={"sessionId": "test-session"})
-        data = r.json()
-        assert data["status"] == "downloading"
-        assert data["current_downloading_file"] == "checkpoint"
+        response = client.get("/api/models/download/progress", params={"sessionId": "test-session"})
+        assert response.status_code == 200
+        assert response.json()["status"] == "downloading"
+        assert response.json()["current_downloading_file"] == "ltx-2.3-22b-distilled"
 
-    def test_completed_session(self, client, test_state):
+    def test_completed_and_error_sessions(self, client, test_state):
         test_state.state.completed_download_sessions["done-session"] = DownloadSessionComplete()
-        r = client.get("/api/models/download/progress", params={"sessionId": "done-session"})
-        data = r.json()
-        assert data["status"] == "complete"
-
-    def test_error_session(self, client, test_state):
         test_state.state.completed_download_sessions["err-session"] = DownloadSessionError(error_message="network error")
-        r = client.get("/api/models/download/progress", params={"sessionId": "err-session"})
-        data = r.json()
-        assert data["status"] == "error"
-        assert data["error"] == "network error"
+
+        complete = client.get("/api/models/download/progress", params={"sessionId": "done-session"})
+        assert complete.status_code == 200
+        assert complete.json()["status"] == "complete"
+
+        failed = client.get("/api/models/download/progress", params={"sessionId": "err-session"})
+        assert failed.status_code == 200
+        assert failed.json()["status"] == "error"
+        assert failed.json()["error"] == "network error"
 
 
-class TestRequiredModels:
-    def test_default_required_models(self, client):
-        r = client.get("/api/models/required-models")
-        assert r.status_code == 200
-        assert r.json()["modelTypes"] == DEFAULT_REQUIRED_MODEL_TYPES
+class TestModelDownloads:
+    def test_download_start_success(self, client, test_state):
+        response = client.post(
+            "/api/models/download",
+            json={"type": "download", "cp_ids": [IMG_GEN_MODEL_CP_ID]},
+        )
+        assert response.status_code == 200
+        assert response.json()["status"] == "started"
+        assert _cp_path(test_state, IMG_GEN_MODEL_CP_ID).exists()
 
-    def test_skip_text_encoder_flag(self, client):
-        r = client.get("/api/models/required-models", params={"skipTextEncoder": "true"})
-        assert r.status_code == 200
-        assert r.json()["modelTypes"] == DEFAULT_REQUIRED_MODEL_TYPES_WITHOUT_TEXT_ENCODER
+    def test_download_conflicts_when_another_session_is_running(self, client, test_state):
+        test_state.downloads.start_download({"ltx-2.3-22b-distilled"})
+        response = client.post(
+            "/api/models/download",
+            json={"type": "download", "cp_ids": [IMG_GEN_MODEL_CP_ID]},
+        )
+        assert_http_error(response, status_code=409, code="DOWNLOAD_ALREADY_RUNNING")
 
-    def test_api_key_auto_excludes_text_encoder(self, client, test_state):
-        test_state.state.app_settings.ltx_api_key = "test-key"
-        r = client.get("/api/models/required-models")
-        assert r.status_code == 200
-        assert r.json()["modelTypes"] == DEFAULT_REQUIRED_MODEL_TYPES_WITHOUT_TEXT_ENCODER
+    def test_upgrade_without_downloaded_model_is_rejected(self, client):
+        response = client.post(
+            "/api/models/download",
+            json={"type": "upgrade", "cp_ids": [_current_ltx_spec().model_cp]},
+        )
+        assert_http_error(response, status_code=409, code="NO_DOWNLOADED_LTX_MODEL")
 
-    def test_forced_mode_returns_empty_set(self, client, test_state):
-        test_state.config.force_api_generations = True
-        test_state.config.required_model_types = frozenset()
-        r = client.get("/api/models/required-models")
-        assert r.status_code == 200
-        assert r.json()["modelTypes"] == []
+    def test_upgrade_raises_500_for_internal_ltx_mapping_inconsistency(self, test_state, monkeypatch):
+        monkeypatch.setattr(test_state.models, "_current_downloaded_ltx_model_id", lambda: "ltx-legacy")
+        monkeypatch.setattr(models_handler_module, "get_ltx_model_id_for_cp", lambda cp_id: None)
 
+        with pytest.raises(HTTPError) as exc_info:
+            test_state.models.resolve_upgrade_download({_current_ltx_spec().model_cp})
 
-class TestModelDownload:
-    def test_start_success(self, client, test_state):
-        r = client.post("/api/models/download", json={"modelTypes": DEFAULT_REQUIRED_MODEL_TYPES})
-        assert r.status_code == 200
-        data = r.json()
-        assert data["status"] == "started"
-        assert data["sessionId"] is not None
+        assert exc_info.value.status_code == 500
+        assert exc_info.value.detail == "INVALID_LTX_MODEL_CONFIG"
 
-        snapshot_calls = [c for c in test_state.model_downloader.calls if c["kind"] == "snapshot"]
-        assert snapshot_calls
+    def test_upgrade_raises_500_when_latest_ltx_model_is_not_relevant(self, test_state, monkeypatch):
+        monkeypatch.setattr(test_state.models, "_current_downloaded_ltx_model_id", lambda: "ltx-legacy")
+        monkeypatch.setattr(models_handler_module, "get_latest_ltx_model_id", lambda: "ltx-2.3-22b-distilled")
+        monkeypatch.setattr(models_handler_module, "get_ltx_model_id_for_cp", lambda cp_id: "ltx-2.3-22b-distilled")
 
-    def test_already_in_progress(self, client, test_state):
-        test_state.downloads.start_download({"checkpoint"})
-        r = client.post("/api/models/download", json={"modelTypes": DEFAULT_REQUIRED_MODEL_TYPES})
-        assert r.status_code == 409
+        original_get_ltx_model_spec = models_handler_module.get_ltx_model_spec
 
-    def test_download_without_text_encoder(self, client, test_state):
-        r = client.post("/api/models/download", json={"modelTypes": DEFAULT_REQUIRED_MODEL_TYPES_WITHOUT_TEXT_ENCODER})
-        assert r.status_code == 200
+        def _get_ltx_model_spec(model_id):
+            spec = original_get_ltx_model_spec(model_id)
+            if model_id == "ltx-2.3-22b-distilled":
+                return replace(spec, relevance=LTXLocalModelDeprecated())
+            return spec
 
-        te_spec = test_state.config.spec_for("text_encoder")
-        te_calls = [c for c in test_state.model_downloader.calls if c.get("repo_id") == te_spec.repo_id]
-        assert not te_calls, "text encoder download should have been skipped"
+        monkeypatch.setattr(models_handler_module, "get_ltx_model_spec", _get_ltx_model_spec)
 
-    def test_download_ic_lora_depth_person_detector_pose_bundle(self, client, test_state):
-        bundle = ["ic_lora", "depth_processor", "person_detector", "pose_processor"]
-        r = client.post("/api/models/download", json={"modelTypes": bundle})
-        assert r.status_code == 200
+        with pytest.raises(HTTPError) as exc_info:
+            test_state.models.resolve_upgrade_download({_current_ltx_spec().model_cp})
 
-        file_calls = [c for c in test_state.model_downloader.calls if c["kind"] == "file"]
-        snapshot_calls = [c for c in test_state.model_downloader.calls if c["kind"] == "snapshot"]
-        downloaded_filenames = {c["filename"] for c in file_calls}
-        downloaded_repos = {c["repo_id"] for c in snapshot_calls}
-        for model_type in bundle:
-            spec = test_state.config.spec_for(model_type)
-            if spec.is_folder:
-                assert spec.repo_id in downloaded_repos
-            else:
-                assert spec.name in downloaded_filenames
+        assert exc_info.value.status_code == 500
+        assert exc_info.value.detail == "INVALID_LTX_MODEL_CONFIG"
 
-    def test_empty_model_types_is_valid_noop(self, client, test_state):
-        r = client.post("/api/models/download", json={"modelTypes": []})
-        assert r.status_code == 200
-        assert r.json()["status"] == "started"
-        assert test_state.model_downloader.calls == []
+    def test_download_error_is_reported(self, client, test_state):
+        test_state.model_downloader.fail_next = RuntimeError("Connection refused")
 
-    def test_forced_mode_downloads_no_local_models(self, client, test_state):
-        test_state.config.force_api_generations = True
-        test_state.config.required_model_types = frozenset()
+        response = client.post(
+            "/api/models/download",
+            json={"type": "download", "cp_ids": [IMG_GEN_MODEL_CP_ID]},
+        )
+        assert response.status_code == 200
+        session_id = response.json()["sessionId"]
 
-        r = client.post("/api/models/download", json={"modelTypes": []})
-        assert r.status_code == 200
+        progress = client.get("/api/models/download/progress", params={"sessionId": session_id})
+        assert progress.status_code == 200
+        assert progress.json()["status"] == "error"
 
-        calls = test_state.model_downloader.calls
-        assert len(calls) == 0
+    def test_download_uses_progress_callback(self, client, test_state):
+        response = client.post(
+            "/api/models/download",
+            json={"type": "download", "cp_ids": [IMG_GEN_MODEL_CP_ID]},
+        )
+        assert response.status_code == 200
+        assert test_state.model_downloader.calls
+        assert all(call["on_progress"] is not None for call in test_state.model_downloader.calls)
 
-
-class TestTextEncoderDownload:
-    def test_start_download(self, client):
-        r = client.post("/api/text-encoder/download")
-        assert r.status_code == 200
-        data = r.json()
-        assert data["status"] == "started"
-        assert data["sessionId"] is not None
-
-    def test_already_downloaded(self, client, test_state):
-        te_dir = _model_path(test_state,"text_encoder")
-        te_dir.mkdir(parents=True, exist_ok=True)
-        (te_dir / "model.safetensors").write_bytes(b"\x00" * 1024)
-
-        r = client.post("/api/text-encoder/download")
-        assert r.status_code == 200
-        assert r.json()["status"] == "already_downloaded"
-
-    def test_already_in_progress(self, client, test_state):
-        test_state.downloads.start_download({"checkpoint"})
-        r = client.post("/api/text-encoder/download")
-        assert r.status_code == 409
-
-
-class TestDownloadProgressCallbacks:
-    def test_download_passes_progress_callback(self, client, test_state):
-        r = client.post("/api/models/download", json={"modelTypes": DEFAULT_REQUIRED_MODEL_TYPES})
-        assert r.status_code == 200
-
-        calls = test_state.model_downloader.calls
-        assert len(calls) > 0
-        for call in calls:
-            assert call["on_progress"] is not None, f"on_progress missing for {call['kind']} call"
-
-    def test_text_encoder_download_passes_progress_callback(self, client, test_state):
-        r = client.post("/api/text-encoder/download")
-        assert r.status_code == 200
-
-        calls = test_state.model_downloader.calls
-        assert len(calls) > 0
-        for call in calls:
-            assert call["on_progress"] is not None
-
-    def test_progress_callback_updates_state(self, client, test_state):
-        r = client.post("/api/models/download", json={"modelTypes": DEFAULT_REQUIRED_MODEL_TYPES})
-        assert r.status_code == 200
-        session_id = r.json()["sessionId"]
-
-        # The fake downloader invokes on_progress(512, 1024) then on_progress(1024, 1024).
-        # After download completes, each file is marked completed.
-        # Verify that the download session was populated (files are now completed).
-        r = client.get("/api/models/download/progress", params={"sessionId": session_id})
-        data = r.json()
-        assert data["status"] == "complete"
-
-    def test_progress_callback_updates_running_state(self, test_state):
-        """Directly invoke callback to verify it updates FileDownloadRunning state."""
-        session_id = test_state.downloads.start_download({"checkpoint"})
-        test_state.downloads.start_file("checkpoint", "checkpoint")
-        cb = test_state.downloads._make_progress_callback("checkpoint")
-        cb(5_000)
-
-        r = test_state.downloads.get_download_progress(session_id)
-        assert r.total_downloaded_bytes == 5_000
-        assert r.current_downloading_file == "checkpoint"
-
-
-class TestAtomicDownloads:
-    """Verify downloads use .downloading/ staging dir and atomic moves."""
-
-    def test_partial_file_in_downloading_dir_not_detected(self, test_state):
-        """Files in .downloading/ must NOT be reported as downloaded."""
-        downloading = _downloading_dir(test_state)
-        downloading.mkdir(parents=True, exist_ok=True)
-        (downloading / "ltx-2-19b-distilled-fp8.safetensors").write_bytes(b"\x00" * 1024)
-
-        test_state.models.refresh_available_files()
-        assert test_state.state.available_files["checkpoint"] is None
-
-    def test_cleanup_downloading_dir_on_startup(self, test_state):
-        """cleanup_downloading_dir() removes stale .downloading/ dir."""
-        downloading = _downloading_dir(test_state)
-        downloading.mkdir(parents=True, exist_ok=True)
-        (downloading / "partial-file.safetensors").write_bytes(b"\x00" * 1024)
-
-        test_state.downloads.cleanup_downloading_dir()
-        assert not downloading.exists()
-
-    def test_cleanup_downloading_dir_noop_when_absent(self, test_state):
-        """cleanup_downloading_dir() is safe when dir doesn't exist."""
-        test_state.downloads.cleanup_downloading_dir()
-        assert not _downloading_dir(test_state).exists()
-
-    def test_download_moves_files_to_final_location(self, client, test_state):
-        """After download, files exist at final location, not in .downloading/."""
-        r = client.post("/api/models/download", json={"modelTypes": DEFAULT_REQUIRED_MODEL_TYPES})
-        assert r.status_code == 200
-
-        # Files should be at their final locations
-        assert _model_path(test_state,"checkpoint").exists()
-        assert _model_path(test_state,"upsampler").exists()
-
-        # .downloading/ should be gone (or empty)
-        downloading = _downloading_dir(test_state)
-        assert not downloading.exists() or not any(downloading.iterdir())
-
-    def test_text_encoder_download_moves_to_final(self, client, test_state):
-        """Text encoder download uses .downloading/ and moves to final."""
-        r = client.post("/api/text-encoder/download")
-        assert r.status_code == 200
-
-        te_path = _model_path(test_state,"text_encoder")
-        assert te_path.exists()
-
-        downloading = _downloading_dir(test_state)
-        assert not downloading.exists() or not any(downloading.iterdir())
-
-    def test_failed_download_cleans_up_downloading_dir(self, test_state):
-        """On download failure, .downloading/ is cleaned up."""
+    def test_failed_download_cleans_staging_dir(self, test_state):
         test_state.model_downloader.fail_next = RuntimeError("network error")
-
-        test_state.downloads.start_model_download({"checkpoint"})
-
-        # The error handler should have been called
+        test_state.downloads.start_model_download(download_type="download", cp_ids={IMG_GEN_MODEL_CP_ID})
         assert len(test_state.task_runner.errors) == 1
-
-        downloading = _downloading_dir(test_state)
-        assert not downloading.exists()
+        assert not resolve_downloading_dir(test_state.config.default_models_dir).exists()
 
 
-class TestHuggingFaceInternals:
-    """Guard tests for huggingface_hub internals we rely on.
-
-    We monkey-patch ``file_download.http_get`` and ``file_download.xet_get``
-    to inject a custom tqdm bar for progress tracking during
-    ``hf_hub_download`` (which has no public ``tqdm_class`` parameter,
-    unlike ``snapshot_download``).
-
-    If these tests break after a huggingface_hub upgrade, the internal API
-    has changed.  Find an alternative approach and raise to a developer.
-    """
-
-    def test_http_get_exists_and_is_callable(self):
-        assert hasattr(file_download, "http_get"), (
-            "file_download.http_get no longer exists — progress patch for hf_hub_download is broken"
+class TestCheckpointDeletion:
+    def test_delete_missing_checkpoint_is_noop(self, client):
+        response = client.request(
+            "DELETE",
+            "/api/models/delete",
+            json={"cp_ids": [IMG_GEN_MODEL_CP_ID]},
         )
-        assert callable(file_download.http_get)
+        assert response.status_code == 200
+        assert response.json()["status"] == "ok"
 
-    def test_http_get_accepts_tqdm_bar(self):
-        sig = inspect.signature(file_download.http_get)
-        assert "_tqdm_bar" in sig.parameters, (
-            "file_download.http_get no longer accepts _tqdm_bar — progress patch for hf_hub_download is broken"
+    def test_delete_rejects_current_ltx_bundle(self, client, create_fake_model_files):
+        create_fake_model_files()
+        response = client.request(
+            "DELETE",
+            "/api/models/delete",
+            json={"cp_ids": [_current_ltx_spec().model_cp]},
         )
+        assert_http_error(response, status_code=409, code="DELETE_PROTECTED_CHECKPOINT")
 
-    def test_xet_get_accepts_tqdm_bar(self):
-        xet_get = getattr(file_download, "xet_get", None)
-        if xet_get is None:
-            return  # xet_get not present in this version; patch skips it gracefully
-        sig = inspect.signature(xet_get)
-        assert "_tqdm_bar" in sig.parameters, (
-            "file_download.xet_get no longer accepts _tqdm_bar — progress patch for xet downloads is broken"
+    def test_delete_removes_non_protected_checkpoint(self, client, test_state):
+        img_gen_path = _cp_path(test_state, IMG_GEN_MODEL_CP_ID)
+        img_gen_path.mkdir(parents=True, exist_ok=True)
+        (img_gen_path / "model.safetensors").write_bytes(b"\x00" * 1024)
+
+        response = client.request(
+            "DELETE",
+            "/api/models/delete",
+            json={"cp_ids": [IMG_GEN_MODEL_CP_ID]},
         )
+        assert response.status_code == 200
+        assert response.json()["status"] == "ok"
+        assert not img_gen_path.exists()

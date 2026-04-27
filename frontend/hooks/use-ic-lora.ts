@@ -1,5 +1,5 @@
 import { useCallback, useState } from 'react'
-import { ApiClient } from '../lib/api-client'
+import { ApiClient, type ApiRequestBodyOf } from '../lib/api-client'
 import { logger } from '../lib/logger'
 
 export type IcLoraConditioningType = 'canny' | 'depth'
@@ -22,6 +22,8 @@ interface UseIcLoraState {
   result: IcLoraResult | null
 }
 
+type GenerateIcLoraBody = ApiRequestBodyOf<'generateIcLora'>
+
 export function useIcLora() {
   const [state, setState] = useState<UseIcLoraState>({
     isGenerating: false,
@@ -40,43 +42,44 @@ export function useIcLora() {
       result: null,
     })
 
-    try {
-      const payload = await ApiClient.generateIcLora({
-        video_path: params.videoPath,
-        conditioning_type: params.conditioningType,
-        conditioning_strength: params.conditioningStrength,
-        prompt: params.prompt,
-      } as unknown as Parameters<typeof ApiClient.generateIcLora>[0])
-      if (payload.status === 'cancelled') {
-        setState({
-          isGenerating: false,
-          status: 'Cancelled',
-          error: null,
-          result: null,
-        })
-        return
-      }
-
-      if (payload.status === 'complete') {
-        setState({
-          isGenerating: false,
-          status: 'Generation complete!',
-          error: null,
-          result: {
-            videoPath: payload.video_path,
-          },
-        })
-        return
-      }
-    } catch (error) {
-      const message = (error as Error).message || 'Unknown error'
-      logger.error(`IC-LoRA error: ${message}`)
+    const result = await ApiClient.generateIcLora({
+      video_path: params.videoPath,
+      conditioning_type: params.conditioningType,
+      conditioning_strength: params.conditioningStrength,
+      prompt: params.prompt,
+    } as GenerateIcLoraBody)
+    if (!result.ok) {
+      logger.error(`IC-LoRA error: ${result.error.message}`)
       setState({
         isGenerating: false,
         status: '',
-        error: message,
+        error: result.error.message,
         result: null,
       })
+      return
+    }
+
+    const payload = result.data
+    if (payload.status === 'cancelled') {
+      setState({
+        isGenerating: false,
+        status: 'Cancelled',
+        error: null,
+        result: null,
+      })
+      return
+    }
+
+    if (payload.status === 'complete') {
+      setState({
+        isGenerating: false,
+        status: 'Generation complete!',
+        error: null,
+        result: {
+          videoPath: payload.video_path,
+        },
+      })
+      return
     }
   }, [])
 

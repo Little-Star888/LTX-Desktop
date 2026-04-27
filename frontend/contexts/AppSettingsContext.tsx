@@ -1,26 +1,14 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useState, type ReactNode } from 'react'
 import { resetBackendCredentials } from '../lib/backend'
-import { ApiClient } from '../lib/api-client'
-
-export interface InferenceSettings {
-  steps: number
-  useUpscaler: boolean
-}
-
-export interface FastModelSettings {
-  useUpscaler: boolean
-}
+import { ApiClient, type ApiSuccessOf } from '../lib/api-client'
 
 export interface AppSettings {
   useTorchCompile: boolean
-  loadOnStartup: boolean
   hasLtxApiKey: boolean
   userPrefersLtxApiVideoGenerations: boolean
   hasFalApiKey: boolean
   hasGeminiApiKey: boolean
   useLocalTextEncoder: boolean
-  fastModel: FastModelSettings
-  proModel: InferenceSettings
   promptCacheSize: number
   promptEnhancerEnabledT2V: boolean
   promptEnhancerEnabledI2V: boolean
@@ -31,14 +19,11 @@ export interface AppSettings {
 
 export const DEFAULT_APP_SETTINGS: AppSettings = {
   useTorchCompile: false,
-  loadOnStartup: true,
   hasLtxApiKey: false,
   userPrefersLtxApiVideoGenerations: false,
   hasFalApiKey: false,
   hasGeminiApiKey: false,
   useLocalTextEncoder: false,
-  fastModel: { useUpscaler: true },
-  proModel: { steps: 20, useUpscaler: true },
   promptCacheSize: 1,
   promptEnhancerEnabledT2V: false,
   promptEnhancerEnabledI2V: false,
@@ -79,14 +64,11 @@ function toBackendProcessStatus(value: unknown): BackendProcessStatus | null {
 function normalizeAppSettings(data: Partial<AppSettings>): AppSettings {
   return {
     useTorchCompile: data.useTorchCompile ?? DEFAULT_APP_SETTINGS.useTorchCompile,
-    loadOnStartup: data.loadOnStartup ?? DEFAULT_APP_SETTINGS.loadOnStartup,
     hasLtxApiKey: data.hasLtxApiKey ?? DEFAULT_APP_SETTINGS.hasLtxApiKey,
     userPrefersLtxApiVideoGenerations: data.userPrefersLtxApiVideoGenerations ?? DEFAULT_APP_SETTINGS.userPrefersLtxApiVideoGenerations,
     hasFalApiKey: data.hasFalApiKey ?? DEFAULT_APP_SETTINGS.hasFalApiKey,
     hasGeminiApiKey: data.hasGeminiApiKey ?? DEFAULT_APP_SETTINGS.hasGeminiApiKey,
     useLocalTextEncoder: data.useLocalTextEncoder ?? DEFAULT_APP_SETTINGS.useLocalTextEncoder,
-    fastModel: data.fastModel ?? DEFAULT_APP_SETTINGS.fastModel,
-    proModel: data.proModel ?? DEFAULT_APP_SETTINGS.proModel,
     promptCacheSize: data.promptCacheSize ?? DEFAULT_APP_SETTINGS.promptCacheSize,
     promptEnhancerEnabledT2V: data.promptEnhancerEnabledT2V ?? DEFAULT_APP_SETTINGS.promptEnhancerEnabledT2V,
     promptEnhancerEnabledI2V: data.promptEnhancerEnabledI2V ?? DEFAULT_APP_SETTINGS.promptEnhancerEnabledI2V,
@@ -95,6 +77,8 @@ function normalizeAppSettings(data: Partial<AppSettings>): AppSettings {
     modelsDir: data.modelsDir ?? DEFAULT_APP_SETTINGS.modelsDir,
   }
 }
+
+type RuntimePolicyPayload = ApiSuccessOf<'getRuntimePolicy'>
 
 export function AppSettingsProvider({ children }: { children: ReactNode }) {
   const [settings, setSettings] = useState<AppSettings>(DEFAULT_APP_SETTINGS)
@@ -110,24 +94,27 @@ export function AppSettingsProvider({ children }: { children: ReactNode }) {
     setRuntimePolicyLoaded(false)
 
     const fetchRuntimePolicy = async () => {
-      try {
-        const payload = await ApiClient.getRuntimePolicy() as { force_api_generations?: unknown }
-        if (typeof payload.force_api_generations !== 'boolean') {
-          throw new Error('Runtime policy response missing force_api_generations boolean')
-        }
-
-        if (!cancelled) {
-          setForceApiGenerations(payload.force_api_generations)
-        }
-      } catch {
+      const result = await ApiClient.getRuntimePolicy()
+      if (!result.ok) {
         if (!cancelled) {
           // Fail closed until policy can be read.
           setForceApiGenerations(true)
-        }
-      } finally {
-        if (!cancelled) {
           setRuntimePolicyLoaded(true)
         }
+        return
+      }
+
+      const payload = result.data as RuntimePolicyPayload
+      if (typeof payload.force_api_generations !== 'boolean') {
+        if (!cancelled) {
+          setForceApiGenerations(true)
+        }
+      } else if (!cancelled) {
+        setForceApiGenerations(payload.force_api_generations)
+      }
+
+      if (!cancelled) {
+        setRuntimePolicyLoaded(true)
       }
     }
 
@@ -171,8 +158,11 @@ export function AppSettingsProvider({ children }: { children: ReactNode }) {
   }, [])
 
   const refreshSettings = useCallback(async () => {
-    const data = await ApiClient.getSettings()
-    setSettings(normalizeAppSettings(data))
+    const result = await ApiClient.getSettings()
+    if (!result.ok) {
+      throw new Error(result.error.message)
+    }
+    setSettings(normalizeAppSettings(result.data))
     setIsLoaded(true)
   }, [])
 
@@ -204,10 +194,9 @@ export function AppSettingsProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
     if (!isLoaded || backendProcessStatus !== 'alive') return
     const syncTimer = setTimeout(async () => {
-      try {
-        const { hasLtxApiKey: _a, hasFalApiKey: _b, hasGeminiApiKey: _c, modelsDir: _d, ...syncPayload } = settings
-        await ApiClient.updateSettings(syncPayload)
-      } catch {
+      const { hasLtxApiKey: _a, hasFalApiKey: _b, hasGeminiApiKey: _c, modelsDir: _d, ...syncPayload } = settings
+      const result = await ApiClient.updateSettings(syncPayload)
+      if (!result.ok) {
         // Best-effort settings sync.
       }
     }, 150)
@@ -223,17 +212,26 @@ export function AppSettingsProvider({ children }: { children: ReactNode }) {
   }, [])
 
   const saveLtxApiKey = useCallback(async (value: string) => {
-    await ApiClient.updateSettings({ ltxApiKey: value })
+    const result = await ApiClient.updateSettings({ ltxApiKey: value })
+    if (!result.ok) {
+      throw new Error(result.error.message)
+    }
     await refreshSettings()
   }, [refreshSettings])
 
   const saveGeminiApiKey = useCallback(async (value: string) => {
-    await ApiClient.updateSettings({ geminiApiKey: value })
+    const result = await ApiClient.updateSettings({ geminiApiKey: value })
+    if (!result.ok) {
+      throw new Error(result.error.message)
+    }
     await refreshSettings()
   }, [refreshSettings])
 
   const saveFalApiKey = useCallback(async (value: string) => {
-    await ApiClient.updateSettings({ falApiKey: value })
+    const result = await ApiClient.updateSettings({ falApiKey: value })
+    if (!result.ok) {
+      throw new Error(result.error.message)
+    }
     await refreshSettings()
   }, [refreshSettings])
 

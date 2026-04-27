@@ -22,15 +22,24 @@ class LTXFastVideoPipeline:
         gemma_root: str | None,
         upsampler_path: str,
         device: torch.device,
+        streaming_prefetch_count: int | None,
     ) -> "LTXFastVideoPipeline":
         return LTXFastVideoPipeline(
             checkpoint_path=checkpoint_path,
             gemma_root=gemma_root,
             upsampler_path=upsampler_path,
             device=device,
+            streaming_prefetch_count=streaming_prefetch_count,
         )
 
-    def __init__(self, checkpoint_path: str, gemma_root: str | None, upsampler_path: str, device: torch.device) -> None:
+    def __init__(
+        self,
+        checkpoint_path: str,
+        gemma_root: str | None,
+        upsampler_path: str,
+        device: torch.device,
+        streaming_prefetch_count: int | None,
+    ) -> None:
         from ltx_core.quantization import QuantizationPolicy
         from ltx_pipelines.distilled import DistilledPipeline
 
@@ -38,6 +47,7 @@ class LTXFastVideoPipeline:
         self._gemma_root = gemma_root
         self._upsampler_path = upsampler_path
         self._device = device
+        self._streaming_prefetch_count = streaming_prefetch_count
         self._quantization = QuantizationPolicy.fp8_cast() if device_supports_fp8(device) else None
 
         self.pipeline = DistilledPipeline(
@@ -71,7 +81,7 @@ class LTXFastVideoPipeline:
             frame_rate=frame_rate,
             images=[_LtxImageInput(img.path, img.frame_idx, img.strength) for img in images],
             tiling_config=tiling_config,
-            streaming_prefetch_count=2,
+            streaming_prefetch_count=self._streaming_prefetch_count,
         )
 
     @torch.inference_mode()

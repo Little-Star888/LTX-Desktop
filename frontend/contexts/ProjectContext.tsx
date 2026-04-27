@@ -1,26 +1,29 @@
-import React, { createContext, useContext, useState, useEffect, useCallback, useRef } from 'react'
-import type { Project, Asset, AssetTake, ViewType, ProjectTab } from '../types/project'
-import { createDefaultTimeline } from '../types/project'
-import { logger } from '../lib/logger'
+import React, { createContext, useCallback, useContext, useState } from 'react'
+import { hasLegacyProjectsEntry } from '../hooks/useProjectReferencesMigration'
+import { createDefaultTimeline, normalizeProject, type Project, type Asset, type AssetTake, type ProjectTab } from '../types/project-model'
+import {
+  deleteProjectEntry,
+  readProject,
+  readProjectIds,
+  writeProject,
+  writeProjectIds,
+} from '../lib/project-storage'
 
 interface ProjectContextType {
-  // Navigation
-  currentView: ViewType
-  setCurrentView: (view: ViewType) => void
-  currentProjectId: string | null
-  setCurrentProjectId: (id: string | null) => void
   currentTab: ProjectTab
   setCurrentTab: (tab: ProjectTab) => void
-  
-  // Projects
-  projects: Project[]
-  currentProject: Project | null
-  setCurrentProject: (project: Project) => void
+
+  projectIds: string[]
+  activeProject: Project | null
+  getProject: (id: string) => Project | null
+  setProject: (id: string, project: Project) => void
   createProject: (name: string) => Project
   deleteProject: (id: string) => void
   renameProject: (id: string, name: string) => void
-  
-  // Assets
+  activateProject: (id: string) => void
+  clearActiveProject: () => void
+  reloadProjectIds: () => void
+
   addAsset: (projectId: string, asset: Omit<Asset, 'id' | 'createdAt'>) => Asset
   deleteAsset: (projectId: string, assetId: string) => void
   updateAsset: (projectId: string, assetId: string, updates: Partial<Asset>) => void
@@ -28,12 +31,7 @@ interface ProjectContextType {
   deleteTakeFromAsset: (projectId: string, assetId: string, takeIndex: number) => void
   setAssetActiveTake: (projectId: string, assetId: string, takeIndex: number) => void
   toggleFavorite: (projectId: string, assetId: string) => void
-  
-  // Navigation helpers
-  openProject: (id: string) => void
-  goHome: () => void
-  
-  // Cross-view communication (editor → gen space)
+
   genSpaceEditImagePath: string | null
   setGenSpaceEditImagePath: (path: string | null) => void
   genSpaceEditMode: 'image' | 'video' | null
@@ -79,40 +77,16 @@ export interface PendingIcLoraUpdate {
 
 const ProjectContext = createContext<ProjectContextType | null>(null)
 
-const STORAGE_KEY = 'ltx-projects'
-
-// Migrate old projects that don't have timelines
-function migrateProject(project: Project): Project {
-  if (!project.timelines) {
-    return {
-      ...project,
-      timelines: [createDefaultTimeline('Timeline 1')],
-      activeTimelineId: undefined, // will be set on first access
-    }
-  }
-  return project
-}
-
-// Load initial projects from localStorage synchronously
-function loadProjectsFromStorage(): Project[] {
-  try {
-    const stored = localStorage.getItem(STORAGE_KEY)
-    if (stored) {
-      const parsed = JSON.parse(stored)
-      if (Array.isArray(parsed)) {
-        return parsed.map(migrateProject)
-      }
-    }
-  } catch (e) {
-    logger.error(`Failed to load projects: ${e}`)
-  }
-  return []
+function loadInitialProjectIds(): string[] {
+  if (hasLegacyProjectsEntry()) return []
+  return readProjectIds()
 }
 
 export function ProjectProvider({ children }: { children: React.ReactNode }) {
-  const [currentView, setCurrentView] = useState<ViewType>('home')
-  const [currentProjectId, setCurrentProjectId] = useState<string | null>(null)
   const [currentTab, setCurrentTab] = useState<ProjectTab>('gen-space')
+  const [projectIds, setProjectIds] = useState<string[]>(() => loadInitialProjectIds())
+  const [activeProject, setActiveProject] = useState<Project | null>(null)
+  const [projectRevision, setProjectRevision] = useState(0)
   const [genSpaceEditImagePath, setGenSpaceEditImagePath] = useState<string | null>(null)
   const [genSpaceEditMode, setGenSpaceEditMode] = useState<'image' | 'video' | null>(null)
   const [genSpaceAudioPath, setGenSpaceAudioPath] = useState<string | null>(null)
@@ -120,39 +94,50 @@ export function ProjectProvider({ children }: { children: React.ReactNode }) {
   const [pendingRetakeUpdate, setPendingRetakeUpdate] = useState<PendingRetakeUpdate | null>(null)
   const [genSpaceIcLoraSource, setGenSpaceIcLoraSource] = useState<GenSpaceIcLoraSource | null>(null)
   const [pendingIcLoraUpdate, setPendingIcLoraUpdate] = useState<PendingIcLoraUpdate | null>(null)
-  // Initialize with data from localStorage
-  const [projects, setProjects] = useState<Project[]>(() => loadProjectsFromStorage())
-  const isInitializedRef = useRef(false)
-  
-  // Mark as initialized after first render
-  useEffect(() => {
-    isInitializedRef.current = true
-  }, [])
-  
-  // Save projects to localStorage when changed (but not on initial load)
-  useEffect(() => {
-    // Skip saving on initial render to avoid overwriting with stale data
-    if (!isInitializedRef.current) return
-    
-    try {
-      localStorage.setItem(STORAGE_KEY, JSON.stringify(projects))
-      logger.info(`Projects saved: ${projects.length}`)
-    } catch (e) {
-      logger.error(`Failed to save projects: ${e}`)
-    }
-  }, [projects])
-  
-  const currentProject = projects.find(p => p.id === currentProjectId) || null
 
-  const setCurrentProject = useCallback((project: Project) => {
-    setProjects(prev => prev.map(existing => (
-      existing.id === project.id ? project : existing
-    )))
+  const bumpProjectRevision = useCallback(() => {
+    setProjectRevision(prev => prev + 1)
   }, [])
-  
+
+  const getProject = useCallback((id: string): Project | null => readProject(id), [projectRevision])
+
+  const reloadProjectIds = useCallback(() => {
+    const nextProjectIds = hasLegacyProjectsEntry() ? [] : readProjectIds()
+    setProjectIds(nextProjectIds)
+    setActiveProject(prev => (
+      prev && nextProjectIds.includes(prev.id) ? prev : null
+    ))
+    bumpProjectRevision()
+  }, [bumpProjectRevision])
+
+  const activateProject = useCallback((id: string) => {
+    setActiveProject(readProject(id))
+  }, [])
+
+  const clearActiveProject = useCallback(() => {
+    setActiveProject(null)
+  }, [])
+
+  const persistProject = useCallback((projectId: string, project: Project): Project => {
+    const persistedProject = writeProject(projectId, normalizeProject({ ...project, id: projectId }))
+    setActiveProject(prev => (prev?.id === projectId ? persistedProject : prev))
+    bumpProjectRevision()
+    return persistedProject
+  }, [bumpProjectRevision])
+
+  const mutateProject = useCallback((projectId: string, updater: (project: Project) => Project): Project | null => {
+    const project = readProject(projectId)
+    if (!project) return null
+    return persistProject(projectId, updater(project))
+  }, [persistProject])
+
+  const setProject = useCallback((projectId: string, project: Project) => {
+    persistProject(projectId, project)
+  }, [persistProject])
+
   const createProject = useCallback((name: string): Project => {
     const defaultTimeline = createDefaultTimeline('Timeline 1')
-    const newProject: Project = {
+    const newProject = normalizeProject({
       id: `project-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
       name,
       createdAt: Date.now(),
@@ -160,24 +145,32 @@ export function ProjectProvider({ children }: { children: React.ReactNode }) {
       assets: [],
       timelines: [defaultTimeline],
       activeTimelineId: defaultTimeline.id,
-    }
-    setProjects(prev => [newProject, ...prev])
-    return newProject
-  }, [])
-  
+    })
+
+    const persistedProject = writeProject(newProject.id, newProject)
+    const nextProjectIds = [persistedProject.id, ...readProjectIds().filter(id => id !== persistedProject.id)]
+    writeProjectIds(nextProjectIds)
+    setProjectIds(nextProjectIds)
+    bumpProjectRevision()
+    return persistedProject
+  }, [bumpProjectRevision])
+
   const deleteProject = useCallback((id: string) => {
-    setProjects(prev => prev.filter(p => p.id !== id))
-    if (currentProjectId === id) {
-      setCurrentProjectId(null)
-      setCurrentView('home')
-    }
-  }, [currentProjectId])
-  
+    const nextProjectIds = readProjectIds().filter(projectId => projectId !== id)
+    writeProjectIds(nextProjectIds)
+    setProjectIds(nextProjectIds)
+    deleteProjectEntry(id)
+    setActiveProject(prev => (prev?.id === id ? null : prev))
+    bumpProjectRevision()
+  }, [bumpProjectRevision])
+
   const renameProject = useCallback((id: string, name: string) => {
-    setProjects(prev => prev.map(p => 
-      p.id === id ? { ...p, name, updatedAt: Date.now() } : p
-    ))
-  }, [])
+    mutateProject(id, project => ({
+      ...project,
+      name,
+      updatedAt: Date.now(),
+    }))
+  }, [mutateProject])
 
   const addAsset = useCallback((projectId: string, assetData: Omit<Asset, 'id' | 'createdAt'>): Asset => {
     const newAsset: Asset = {
@@ -185,166 +178,140 @@ export function ProjectProvider({ children }: { children: React.ReactNode }) {
       id: `asset-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
       createdAt: Date.now(),
     }
-    setProjects(prev => prev.map(p => 
-      p.id === projectId 
-        ? { 
-            ...p, 
-            assets: [newAsset, ...p.assets],
-            updatedAt: Date.now(),
-          } 
-        : p
-    ))
+
+    mutateProject(projectId, project => ({
+      ...project,
+      assets: [newAsset, ...project.assets],
+      updatedAt: Date.now(),
+    }))
+
     return newAsset
-  }, [])
-  
+  }, [mutateProject])
+
   const deleteAsset = useCallback((projectId: string, assetId: string) => {
-    setProjects(prev => prev.map(p => 
-      p.id === projectId 
-        ? { ...p, assets: p.assets.filter(a => a.id !== assetId), updatedAt: Date.now() } 
-        : p
-    ))
-  }, [])
-  
+    mutateProject(projectId, project => ({
+      ...project,
+      assets: project.assets.filter(asset => asset.id !== assetId),
+      updatedAt: Date.now(),
+    }))
+  }, [mutateProject])
+
   const updateAsset = useCallback((projectId: string, assetId: string, updates: Partial<Asset>) => {
-    setProjects(prev => prev.map(p =>
-      p.id === projectId
-        ? {
-            ...p,
-            assets: p.assets.map(a =>
-              a.id === assetId ? { ...a, ...updates } : a
-            ),
-            updatedAt: Date.now(),
-          }
-        : p
-    ))
-  }, [])
+    mutateProject(projectId, project => ({
+      ...project,
+      assets: project.assets.map(asset => (
+        asset.id === assetId ? { ...asset, ...updates } : asset
+      )),
+      updatedAt: Date.now(),
+    }))
+  }, [mutateProject])
 
   const addTakeToAsset = useCallback((projectId: string, assetId: string, take: AssetTake) => {
-    setProjects(prev => prev.map(p => {
-      if (p.id !== projectId) return p
-      return {
-        ...p,
-        assets: p.assets.map(a => {
-          if (a.id !== assetId) return a
-          // Initialize takes array if it doesn't exist (original asset becomes take 0)
-          const existingTakes: AssetTake[] = a.takes || [{
-            path: a.path,
-            bigThumbnailPath: a.bigThumbnailPath,
-            smallThumbnailPath: a.smallThumbnailPath,
-            width: a.width,
-            height: a.height,
-            createdAt: a.createdAt,
-          }]
-          const newTakes = [...existingTakes, take]
-          const newIndex = newTakes.length - 1
-          return {
-            ...a,
-            takes: newTakes,
-            activeTakeIndex: newIndex,
-            path: take.path,
-            bigThumbnailPath: take.bigThumbnailPath,
-            smallThumbnailPath: take.smallThumbnailPath,
-            width: take.width,
-            height: take.height,
-          }
-        }),
-        updatedAt: Date.now(),
-      }
+    mutateProject(projectId, project => ({
+      ...project,
+      assets: project.assets.map(asset => {
+        if (asset.id !== assetId) return asset
+
+        const existingTakes: AssetTake[] = asset.takes || [{
+          path: asset.path,
+          bigThumbnailPath: asset.bigThumbnailPath,
+          smallThumbnailPath: asset.smallThumbnailPath,
+          width: asset.width,
+          height: asset.height,
+          createdAt: asset.createdAt,
+        }]
+        const newTakes = [...existingTakes, take]
+        const newIndex = newTakes.length - 1
+
+        return {
+          ...asset,
+          takes: newTakes,
+          activeTakeIndex: newIndex,
+          path: take.path,
+          bigThumbnailPath: take.bigThumbnailPath,
+          smallThumbnailPath: take.smallThumbnailPath,
+          width: take.width,
+          height: take.height,
+        }
+      }),
+      updatedAt: Date.now(),
     }))
-  }, [])
+  }, [mutateProject])
 
   const deleteTakeFromAsset = useCallback((projectId: string, assetId: string, takeIndex: number) => {
-    setProjects(prev => prev.map(p => {
-      if (p.id !== projectId) return p
-      return {
-        ...p,
-        assets: p.assets.map(a => {
-          if (a.id !== assetId || !a.takes || a.takes.length <= 1) return a // Never delete the last take
-          const newTakes = a.takes.filter((_, i) => i !== takeIndex)
-          // Adjust activeTakeIndex
-          let newActiveIdx = a.activeTakeIndex ?? newTakes.length - 1
-          if (newActiveIdx >= newTakes.length) newActiveIdx = newTakes.length - 1
-          if (newActiveIdx < 0) newActiveIdx = 0
-          const activeTake = newTakes[newActiveIdx]
-          return {
-            ...a,
-            takes: newTakes,
-            activeTakeIndex: newActiveIdx,
-            path: activeTake.path,
-            bigThumbnailPath: activeTake.bigThumbnailPath,
-            smallThumbnailPath: activeTake.smallThumbnailPath,
-            width: activeTake.width,
-            height: activeTake.height,
-          }
-        }),
-        updatedAt: Date.now(),
-      }
+    mutateProject(projectId, project => ({
+      ...project,
+      assets: project.assets.map(asset => {
+        if (asset.id !== assetId || !asset.takes || asset.takes.length <= 1) return asset
+
+        const newTakes = asset.takes.filter((_, index) => index !== takeIndex)
+        let newActiveIdx = asset.activeTakeIndex ?? newTakes.length - 1
+        if (newActiveIdx >= newTakes.length) newActiveIdx = newTakes.length - 1
+        if (newActiveIdx < 0) newActiveIdx = 0
+        const activeTake = newTakes[newActiveIdx]
+
+        return {
+          ...asset,
+          takes: newTakes,
+          activeTakeIndex: newActiveIdx,
+          path: activeTake.path,
+          bigThumbnailPath: activeTake.bigThumbnailPath,
+          smallThumbnailPath: activeTake.smallThumbnailPath,
+          width: activeTake.width,
+          height: activeTake.height,
+        }
+      }),
+      updatedAt: Date.now(),
     }))
-  }, [])
+  }, [mutateProject])
 
   const setAssetActiveTake = useCallback((projectId: string, assetId: string, takeIndex: number) => {
-    setProjects(prev => prev.map(p => {
-      if (p.id !== projectId) return p
-      return {
-        ...p,
-        assets: p.assets.map(a => {
-          if (a.id !== assetId || !a.takes) return a
-          const idx = Math.max(0, Math.min(takeIndex, a.takes.length - 1))
-          const take = a.takes[idx]
-          return {
-            ...a,
-            activeTakeIndex: idx,
-            path: take.path,
-            bigThumbnailPath: take.bigThumbnailPath,
-            smallThumbnailPath: take.smallThumbnailPath,
-            width: take.width,
-            height: take.height,
-          }
-        }),
-        updatedAt: Date.now(),
-      }
+    mutateProject(projectId, project => ({
+      ...project,
+      assets: project.assets.map(asset => {
+        if (asset.id !== assetId || !asset.takes) return asset
+
+        const nextIndex = Math.max(0, Math.min(takeIndex, asset.takes.length - 1))
+        const take = asset.takes[nextIndex]
+
+        return {
+          ...asset,
+          activeTakeIndex: nextIndex,
+          path: take.path,
+          bigThumbnailPath: take.bigThumbnailPath,
+          smallThumbnailPath: take.smallThumbnailPath,
+          width: take.width,
+          height: take.height,
+        }
+      }),
+      updatedAt: Date.now(),
     }))
-  }, [])
+  }, [mutateProject])
 
   const toggleFavorite = useCallback((projectId: string, assetId: string) => {
-    setProjects(prev => prev.map(p => 
-      p.id === projectId 
-        ? { 
-            ...p, 
-            assets: p.assets.map(a => 
-              a.id === assetId ? { ...a, favorite: !a.favorite } : a
-            ),
-            updatedAt: Date.now(),
-          } 
-        : p
-    ))
-  }, [])
-  
-  const openProject = useCallback((id: string) => {
-    setCurrentProjectId(id)
-    setCurrentView('project')
-    setCurrentTab('gen-space')
-  }, [])
-  
-  const goHome = useCallback(() => {
-    setCurrentView('home')
-    setCurrentProjectId(null)
-  }, [])
-  
+    mutateProject(projectId, project => ({
+      ...project,
+      assets: project.assets.map(asset => (
+        asset.id === assetId ? { ...asset, favorite: !asset.favorite } : asset
+      )),
+      updatedAt: Date.now(),
+    }))
+  }, [mutateProject])
+
   return (
     <ProjectContext.Provider value={{
-      currentView,
-      setCurrentView,
-      currentProjectId,
-      setCurrentProjectId,
       currentTab,
       setCurrentTab,
-      projects,
-      currentProject,
-      setCurrentProject,
+      projectIds,
+      activeProject,
+      getProject,
+      setProject,
       createProject,
       deleteProject,
       renameProject,
+      activateProject,
+      clearActiveProject,
+      reloadProjectIds,
       addAsset,
       deleteAsset,
       updateAsset,
@@ -352,8 +319,6 @@ export function ProjectProvider({ children }: { children: React.ReactNode }) {
       deleteTakeFromAsset,
       setAssetActiveTake,
       toggleFavorite,
-      openProject,
-      goHome,
       genSpaceEditImagePath,
       setGenSpaceEditImagePath,
       genSpaceEditMode,

@@ -1,7 +1,7 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react'
 import { Plus, FileUp, Film, Trash2 } from 'lucide-react'
 import { Tooltip } from '../../components/ui/tooltip'
-import { useShallow } from 'zustand/react/shallow'
+import { shallow } from 'zustand/vanilla/shallow'
 import {
   selectActiveTimelineId,
   selectOpenTimelineIds,
@@ -31,7 +31,7 @@ export function VideoEditorTimelineControlPanel(props: VideoEditorTimelineContro
   const timelines = useEditorStore(selectTimelines)
   const activeTimelineId = useEditorStore(selectActiveTimelineId)
   const openTimelineIds = useEditorStore(selectOpenTimelineIds)
-  const { renamingTimelineId, renameValue, renameSource } = useEditorStore(useShallow(selectTimelineRenameState))
+  const { renamingTimelineId, renameValue, renameSource } = useEditorStore(selectTimelineRenameState, shallow)
   const timelineItems = useMemo(() => (
     timelines.map(timeline => ({
       timeline,

@@ -52,6 +52,20 @@ class _RetakeResponsePayload(BaseModel):
         return self.video_url or self.output_video or (self.result.video_url if self.result is not None else None)
 
 
+class _LTXErrorDetailPayload(BaseModel):
+    model_config = ConfigDict(extra="ignore")
+    type: str | None = None
+    message: str | None = None
+
+
+class _LTXErrorPayload(BaseModel):
+    model_config = ConfigDict(extra="ignore")
+    type: str | None = None
+    error: _LTXErrorDetailPayload | None = None
+    message: str | None = None
+    detail: str | None = None
+
+
 class LTXAPIClientImpl:
     def __init__(self, http: HTTPClient, ltx_api_base_url: str) -> None:
         self._http = http
@@ -261,19 +275,26 @@ class LTXAPIClientImpl:
     def _extract_video_bytes(self, response: Any, api_key: str) -> bytes:
         rid = self._fmt_request_id(response)
         if response.status_code != 200:
-            err = response.text[:500] if response.text else "Unknown error"
-            raise RuntimeError(f"LTX API generation failed ({response.status_code}): {err}{rid}")
+            provider_error_type, provider_message, err = self._extract_generation_error(response)
+            raise LTXAPIClientError(
+                response.status_code,
+                f"LTX API generation failed ({response.status_code}): {err}{rid}",
+                stage="generation",
+                provider_error_type=provider_error_type,
+                provider_message=provider_message,
+                request_id=self._request_id(response),
+            )
 
         content_type = str(response.headers.get("Content-Type", "")).lower()
         if "video" in content_type or "octet-stream" in content_type:
             if not response.content:
-                raise RuntimeError(f"LTX API returned empty video body{rid}")
+                raise LTXAPIClientError(500, f"LTX API returned empty video body{rid}", stage="generation")
             return response.content
 
         try:
             payload = cast(dict[str, Any], response.json())
         except Exception as exc:
-            raise RuntimeError(f"Unexpected LTX API response format{rid}") from exc
+            raise LTXAPIClientError(500, f"Unexpected LTX API response format{rid}", stage="generation") from exc
 
         video_url = self._extract_video_url(payload)
         if video_url is not None:
@@ -283,15 +304,15 @@ class LTXAPIClientImpl:
                 timeout=120,
             )
             if dl_resp.status_code != 200:
-                raise RuntimeError(f"Failed to download generated video ({dl_resp.status_code}){rid}")
+                raise LTXAPIClientError(500, f"Failed to download generated video ({dl_resp.status_code}){rid}", stage="generation")
             if not dl_resp.content:
-                raise RuntimeError(f"Downloaded generated video is empty{rid}")
+                raise LTXAPIClientError(500, f"Downloaded generated video is empty{rid}", stage="generation")
             return dl_resp.content
 
         error_text = payload.get("error") or payload.get("message") or payload.get("detail")
         if isinstance(error_text, str) and error_text:
-            raise RuntimeError(f"LTX API returned an error payload: {error_text}{rid}")
-        raise RuntimeError(f"LTX API response did not include a video payload{rid}")
+            raise LTXAPIClientError(500, f"LTX API returned an error payload: {error_text}{rid}", stage="generation")
+        raise LTXAPIClientError(500, f"LTX API response did not include a video payload{rid}", stage="generation")
 
     @staticmethod
     def _request_id(response: Any) -> str | None:
@@ -308,6 +329,32 @@ class LTXAPIClientImpl:
         if ":" not in detail:
             return detail
         return detail.split(":", 1)[1].strip()
+
+    @staticmethod
+    def _extract_generation_error(response: Any) -> tuple[str | None, str | None, str]:
+        if response.text:
+            error_text = response.text[:500]
+        else:
+            error_text = "Unknown error"
+
+        try:
+            payload = _LTXErrorPayload.model_validate(response.json())
+        except (ValidationError, TypeError, ValueError):
+            return None, None, error_text
+
+        provider_error_type = payload.error.type if payload.error is not None else None
+        provider_message = (
+            payload.error.message
+            if payload.error is not None and payload.error.message
+            else payload.message or payload.detail
+        )
+        if not response.text:
+            serialized_payload = payload.model_dump(mode="json", exclude_none=True)
+            if serialized_payload:
+                error_text = json.dumps(serialized_payload, separators=(",", ":"))[:500]
+            elif provider_message:
+                error_text = provider_message
+        return provider_error_type, provider_message, error_text
 
     @staticmethod
     def _extract_video_url(payload: dict[str, Any]) -> str | None:

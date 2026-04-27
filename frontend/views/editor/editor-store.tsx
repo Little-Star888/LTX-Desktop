@@ -1,6 +1,6 @@
 import React, { createContext, useCallback, useContext, useMemo } from 'react'
 import { createStore, type StoreApi } from 'zustand/vanilla'
-import { useStore as useZustandStore } from 'zustand'
+import { useStoreWithEqualityFn } from 'zustand/traditional'
 import type { EditorState } from './editor-state'
 import { equalUndoSnapshot, getUndoSnapshot } from './editor-state'
 import * as editorActions from './editor-actions'
@@ -79,9 +79,12 @@ function useEditorStoreContext(): EditorStoreApi {
   return store
 }
 
-export function useEditorStore<T>(selector: (state: EditorState) => T): T {
+export function useEditorStore<T>(
+  selector: (state: EditorState) => T,
+  equalityFn?: (left: T, right: T) => boolean,
+): T {
   const store = useEditorStoreContext()
-  return useZustandStore(store, state => selector(state.state))
+  return useStoreWithEqualityFn(store, state => selector(state.state), equalityFn)
 }
 
 export function useEditorGetState(): () => EditorState {

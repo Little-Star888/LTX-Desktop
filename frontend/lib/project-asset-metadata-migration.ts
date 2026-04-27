@@ -1,5 +1,5 @@
 import type { ElectronAPI } from '../../shared/electron-api-schema'
-import type { Asset } from '../types/project'
+import type { Asset } from '../types/project-model'
 import { logger } from './logger'
 
 interface VisualAssetMetadataMigrationJob {
